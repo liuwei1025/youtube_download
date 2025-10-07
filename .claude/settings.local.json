@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(export:*)",
+      "Bash(yt-dlp:*)",
+      "Bash(chmod:*)",
+      "Bash(python src/get_video_audio.py:*)",
+      "Bash(timeout:*)",
+      "Bash(./get_video_audio_simple.sh:*)",
+      "Bash(unset:*)",
+      "Bash(./get_360p_segment.sh:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
