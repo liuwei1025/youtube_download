@@ -4,20 +4,36 @@
 
 ## 🌟 主要特性
 
+### 核心功能
 - ✅ **精确时间段裁剪** - 使用两阶段下载策略，先下载完整视频再精确切割
-- ✅ **音频提取** - 自动提取音频并保存为MP3格式（192K质量）
+- ✅ **音频提取** - 自动提取音频并保存为MP3格式（可配置质量）
 - ✅ **字幕下载** - 支持多语言字幕下载（中/英/日等）
-- ✅ **HTTP代理支持** - 默认支持HTTP代理，提高兼容性
+- ✅ **HTTP代理支持** - 智能代理配置，支持环境变量和自定义设置
 - ✅ **视频ID组织** - 按视频ID创建目录，文件管理更有序
+
+### 新增功能 (v2.0)
+- 🆕 **批量处理** - 支持从文件读取多个URL批量下载
+- 🆕 **配置文件** - 支持JSON配置文件，保存常用设置
+- 🆕 **进度条显示** - 批量处理时显示实时进度
+- 🆕 **依赖检查** - 自动检查必要工具是否安装
+- 🆕 **日志系统** - 完整的日志记录，支持文件和控制台输出
+- 🆕 **错误重试** - 智能重试机制，提高下载成功率
+- 🆕 **磁盘空间检查** - 下载前检查可用存储空间
+
+### 技术改进
 - ✅ **Cookie支持** - 支持浏览器Cookie验证
 - ✅ **多格式支持** - 支持多种时间格式输入
-- ✅ **质量优化** - 视频限制在480p以下，加快下载速度
+- ✅ **质量配置** - 可配置视频和音频质量
+- ✅ **安全增强** - 改进代理配置安全性
 
 ## 安装依赖
 
 ```bash
 # 安装 Python 依赖
-pip install yt-dlp
+pip install -r requirements.txt
+
+# 或者手动安装
+pip install yt-dlp tqdm
 
 # 安装 ffmpeg
 # macOS
@@ -45,6 +61,46 @@ python src/youtube_downloader.py "https://www.youtube.com/watch?v=yJqOe-tKj-U" \
 
 # 查看帮助
 ./ytdl --help
+```
+
+### 新功能使用
+
+#### 批量下载
+```bash
+# 从文件批量下载（需要指定时间段）
+python src/youtube_downloader.py --batch urls.txt --start 1:00 --end 2:00
+
+# 使用配置文件
+python src/youtube_downloader.py --batch urls.txt --config config.json
+```
+
+#### 配置文件
+创建 `config.json` 文件：
+```json
+{
+  "proxy": "http://127.0.0.1:7890",
+  "subtitle_langs": "zh,en,ja",
+  "video_quality": "best[height<=720]",
+  "audio_quality": "256K",
+  "max_retries": 5,
+  "output_dir": "downloads"
+}
+```
+
+#### 高级选项
+```bash
+# 自定义质量和重试次数
+python src/youtube_downloader.py "URL" --start 1:00 --end 2:00 \
+    --video-quality "best[height<=720]" \
+    --audio-quality "256K" \
+    --max-retries 5
+
+# 只下载音频
+python src/youtube_downloader.py "URL" --start 1:00 --end 2:00 --no-video
+
+# 自定义代理
+python src/youtube_downloader.py "URL" --start 1:00 --end 2:00 \
+    --proxy "http://your-proxy:port"
 ```
 
 ### 改进特性

@@ -1,0 +1,7 @@
+# YouTube URL批量下载文件
+# 每行一个URL，以#开头的行为注释
+
+# 示例URL（请替换为实际的YouTube URL）
+# https://www.youtube.com/watch?v=dQw4w9WgXcQ
+# https://www.youtube.com/watch?v=yJqOe-tKj-U
+# https://youtu.be/example123

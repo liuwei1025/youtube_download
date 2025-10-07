@@ -1,0 +1,8 @@
+{
+  "proxy": "http://127.0.0.1:7890",
+  "subtitle_langs": "en",
+  "video_quality": "best[height<=720]",
+  "audio_quality": "256K",
+  "max_retries": 5,
+  "output_dir": "downloads"
+}
