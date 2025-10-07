@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.venv
+venv
+env
+
+# 日志文件
+*.log
+
+# 下载文件
+downloads/
+*.mp4
+*.mp3
+*.vtt
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# 文档
+docs/
+README.md
+
+# 其他
+urls.txt
+.DS_Store
