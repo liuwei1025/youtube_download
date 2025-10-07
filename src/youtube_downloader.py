@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-YouTube下载器 - 最终整合版本
-支持时间段裁剪、音频提取、字幕下载，完美适配SOCKS代理环境
-文件按视频ID自动命名，便于管理和识别
+YouTube下载器 - 改进版（含默认代理）
+支持时间段裁剪、音频提取、字幕下载
+使用两阶段下载策略：先下载完整视频，再精确切割
+按视频ID组织下载的文件
 """
 
 import os
@@ -11,9 +12,10 @@ import subprocess
 import argparse
 from datetime import datetime
 import re
+import glob
+import shutil
 
 def extract_video_id(url):
-    """从YouTube URL中提取视频ID"""
     patterns = [
         r'(?:https?://)?(?:www\.)?youtube\.com/watch\?v=([\w-]+)',
         r'(?:https?://)?(?:www\.)?youtu\.be/([\w-]+)',
@@ -26,159 +28,183 @@ def extract_video_id(url):
     return None
 
 def parse_time(time_str):
-    """将时间字符串转换为秒数"""
     if ':' in time_str:
         parts = time_str.split(':')
-        if len(parts) == 3:  # HH:MM:SS
+        if len(parts) == 3:
             hours, minutes, seconds = map(int, parts)
-            return hours * 3600 + minutes * 60 + seconds
-        elif len(parts) == 2:  # MM:SS
-            minutes, seconds = map(int, parts)
-            return minutes * 60 + seconds
+        elif len(parts) == 2:
+            hours, minutes, seconds = 0, *map(int, parts)
     else:
-        return int(time_str)
+        total_seconds = int(time_str)
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-def setup_proxy():
-    """设置SOCKS代理环境"""
-    # 检查系统代理设置
-    proxy_url = None
-    for env_var in ['ALL_PROXY', 'https_proxy', 'HTTPS_PROXY']:
-        if os.environ.get(env_var):
-            proxy_url = os.environ.get(env_var)
-            break
+def setup_proxy(user_proxy=None):
+    proxy = user_proxy or "http://127.0.0.1:7890"
+    for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]:
+        os.environ[key] = proxy
+    return proxy
 
-    if not proxy_url:
-        # 默认SOCKS代理
-        proxy_url = "socks5://127.0.0.1:7890"
-        os.environ['ALL_PROXY'] = proxy_url
-        os.environ['https_proxy'] = proxy_url
-        os.environ['http_proxy'] = proxy_url
-
-    return proxy_url
-
-def run_yt_dlp_command(cmd, cwd=None):
-    """运行yt-dlp命令并处理输出"""
+def run_command(cmd, cwd=None):
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=cwd)
         return True, result.stdout
     except subprocess.CalledProcessError as e:
         return False, e.stderr
 
-def download_segment(url, start_time, end_time, output_dir, content_type, video_id, subtitle_langs='zh-CN,zh,en,ja'):
-    """下载指定片段的核心函数"""
-    setup_proxy()
+def ensure_video_dir(base_dir, video_id):
+    video_dir = os.path.join(base_dir, video_id)
+    os.makedirs(video_dir, exist_ok=True)
+    return video_dir
 
-    # 转换时间
-    start_seconds = parse_time(start_time)
-    end_seconds = parse_time(end_time)
-    duration = end_seconds - start_seconds
+def download_subtitles(url, start_time, end_time, video_dir, video_id, subtitle_langs, proxy):
+    print(f"📖 下载字幕...")
+    temp_dir = os.path.join(video_dir, "temp_subs")
+    os.makedirs(temp_dir, exist_ok=True)
+    try:
+        cmd = [
+            'yt-dlp',
+            '--proxy', proxy,
+            '--cookies-from-browser', 'chrome',
+            '--write-auto-sub',
+            '--sub-lang', subtitle_langs,
+            '--skip-download',
+            '-o', os.path.join(temp_dir, 'subs'),
+            '--no-playlist',
+            url
+        ]
+        success, output = run_command(cmd)
+        if not success:
+            print(f"❌ 字幕下载失败: {output}")
+            return None
+        subtitle_files = []
+        for lang in subtitle_langs.split(','):
+            pattern = os.path.join(temp_dir, f"subs.{lang}.vtt")
+            matches = glob.glob(pattern)
+            if matches:
+                safe_start = start_time.replace(':', '_')
+                safe_end = end_time.replace(':', '_')
+                new_name = f"subtitles_{safe_start}-{safe_end}.{lang}.vtt"
+                new_path = os.path.join(video_dir, new_name)
+                shutil.move(matches[0], new_path)
+                subtitle_files.append(new_path)
+        if subtitle_files:
+            print(f"✅ 字幕下载完成: {', '.join(os.path.basename(f) for f in subtitle_files)}")
+            return subtitle_files[0]
+        else:
+            print("❌ 字幕处理失败: 未找到字幕文件")
+            return None
+    finally:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
 
-    # 基础命令
-    base_cmd = ['yt-dlp', '--proxy', 'socks5://127.0.0.1:7890', '--cookies-from-browser', 'chrome',
-                '--hls-prefer-native', '--download-sections', f'*{start_seconds}-{end_seconds}']
+def download_and_cut_segment(url, start_time, end_time, output_path, content_type, proxy):
+    start_str = parse_time(start_time)
+    end_str = parse_time(end_time)
+    temp_dir = os.path.dirname(output_path)
+    temp_path = os.path.join(temp_dir, f"temp_{os.path.basename(output_path)}")
+    try:
+        if content_type == 'video':
+            format_opts = ['-f', 'best[height<=480]']
+        else:
+            format_opts = ['-f', 'bestaudio/best']
+        cmd = [
+            'yt-dlp',
+            '--proxy', proxy,
+            '--cookies-from-browser', 'chrome',
+            *format_opts,
+            '-o', temp_path,
+            '--no-playlist',
+            url
+        ]
+        if content_type == 'audio':
+            cmd.extend(['--extract-audio', '--audio-format', 'mp3', '--audio-quality', '192K'])
+        success, output = run_command(cmd)
+        if not success:
+            print(f"❌ 下载失败: {output}")
+            return None
+        safe_start = start_time.replace(':', '_')
+        safe_end = end_time.replace(':', '_')
+        if content_type == 'video':
+            cmd = ['ffmpeg', '-y', '-i', temp_path, '-ss', start_str, '-to', end_str, '-c:v', 'copy', '-c:a', 'copy', output_path]
+        else:
+            cmd = ['ffmpeg', '-y', '-i', temp_path, '-ss', start_str, '-to', end_str, '-acodec', 'libmp3lame', '-ar', '44100', '-ab', '192k', output_path]
+        success, output = run_command(cmd)
+        if not success:
+            print(f"❌ 切割失败: {output}")
+            return None
+        return output_path
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
+def download_segment(url, start_time, end_time, output_dir, content_type, video_id, subtitle_langs, proxy):
+    video_dir = ensure_video_dir(output_dir, video_id)
     if content_type == 'video':
-        filename = f"{video_id}_segment_{start_time}-{end_time}.mp4"
-        filepath = os.path.join(output_dir, filename)
-        cmd = base_cmd + ['-f', 'best[ext=mp4]/best', '-o', filepath, '--no-playlist', url]
-        print(f"📥 下载视频: {filename}")
-
+        filename = f"segment_{start_time.replace(':', '_')}-{end_time.replace(':', '_')}.mp4"
+        filepath = os.path.join(video_dir, filename)
+        print(f"📥 下载并处理视频片段...")
+        result = download_and_cut_segment(url, start_time, end_time, filepath, 'video', proxy)
+        if result:
+            print(f"✅ 视频处理完成: {filepath}")
+            return filepath
     elif content_type == 'audio':
-        filename = f"{video_id}_audio_{start_time}-{end_time}.mp3"
-        filepath = os.path.join(output_dir, filename)
-        cmd = base_cmd + ['-f', 'bestaudio/best', '-o', f"{video_id}_audio_{start_time}-{end_time}.%(ext)s",
-                          '--extract-audio', '--audio-format', 'mp3', '--audio-quality', '192K',
-                          '--no-playlist', url]
-        print(f"🎵 下载音频: {filename}")
-
+        filename = f"audio_{start_time.replace(':', '_')}-{end_time.replace(':', '_')}.mp3"
+        filepath = os.path.join(video_dir, filename)
+        print(f"🎵 下载并处理音频片段...")
+        result = download_and_cut_segment(url, start_time, end_time, filepath, 'audio', proxy)
+        if result:
+            print(f"✅ 音频处理完成: {filepath}")
+            return filepath
     elif content_type == 'subtitles':
-        filename = f"{video_id}_subtitles_{start_time}-{end_time}.vtt"
-        filepath = os.path.join(output_dir, filename)
-        cmd = ['yt-dlp', '--proxy', 'socks5://127.0.0.1:7890', '--cookies-from-browser', 'chrome',
-               '--write-auto-sub', '--sub-lang', subtitle_langs, '--skip-download',
-               '-o', f"{video_id}_subtitles_{start_time}-{end_time}.%(ext)s", '--no-playlist', url]
-        print(f"📖 下载字幕: {filename}")
-
-    # 执行命令
-    success, output = run_yt_dlp_command(cmd, output_dir)
-
-    if success:
-        print(f"✅ {content_type.title()}下载完成: {filepath}")
-        return filepath
-    else:
-        print(f"❌ {content_type.title()}下载失败: {output}")
-        return None
+        return download_subtitles(url, start_time, end_time, video_dir, video_id, subtitle_langs, proxy)
+    return None
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='YouTube下载器 - 支持时间段裁剪、音频提取、字幕下载',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-示例用法:
-  %(prog)s "https://www.youtube.com/watch?v=yJqOe-tKj-U" --start 2:00 --end 3:00
-  %(prog)s "URL" --start 120 --end 180 --no-video
-  %(prog)s "URL" --start 2:00 --end 3:00 --output-dir ./my_downloads
-        """
-    )
-
+    parser = argparse.ArgumentParser(description='YouTube下载器 - 支持时间段裁剪、音频提取、字幕下载')
     parser.add_argument('url', help='YouTube视频URL')
-    parser.add_argument('--start', required=True, help='开始时间 (格式: HH:MM:SS, MM:SS, 或秒数)')
-    parser.add_argument('--end', required=True, help='结束时间 (格式: HH:MM:SS, MM:SS, 或秒数)')
-    parser.add_argument('--output-dir', default='downloads', help='输出目录 (默认: downloads)')
+    parser.add_argument('--start', required=True, help='开始时间 (HH:MM:SS, MM:SS 或秒数)')
+    parser.add_argument('--end', required=True, help='结束时间 (HH:MM:SS, MM:SS 或秒数)')
+    parser.add_argument('--output-dir', default='downloads', help='输出目录')
     parser.add_argument('--no-video', action='store_true', help='不下载视频')
     parser.add_argument('--no-audio', action='store_true', help='不下载音频')
     parser.add_argument('--no-subtitles', action='store_true', help='不下载字幕')
-    parser.add_argument('--sub-langs', default='zh-CN,zh,en,ja',
-                       help='字幕语言代码，逗号分隔 (默认: zh-CN,zh,en,ja)')
-    parser.add_argument('--sub-lang', dest='sub_langs',
-                       help='字幕语言代码的别名 (与 --sub-langs 相同)')
-
+    parser.add_argument('--sub-langs', default='zh,en', help='字幕语言代码')
+    parser.add_argument('--proxy', help='自定义代理地址，如 http://127.0.0.1:7890')
     args = parser.parse_args()
 
     print("🎯 YouTube下载器")
     print(f"📺 URL: {args.url}")
     print(f"⏰ 时间段: {args.start} - {args.end}")
 
-    # 提取视频ID
     video_id = extract_video_id(args.url)
     if not video_id:
         print("❌ 无法从URL提取视频ID")
         sys.exit(1)
-
     print(f"🆔 视频ID: {video_id}")
 
-    # 设置代理
-    proxy = setup_proxy()
-    print(f"🌐 代理: {proxy}")
+    proxy = setup_proxy(args.proxy)
+    print(f"🌐 使用代理: {proxy}")
 
-    # 创建输出目录
     os.makedirs(args.output_dir, exist_ok=True)
-
-    # 转换时间显示
-    start_seconds = parse_time(args.start)
-    end_seconds = parse_time(args.end)
-    duration = end_seconds - start_seconds
-    print(f"⏱️  时长: {duration}秒")
-
-    # 下载各项内容
     results = {}
 
     if not args.no_video:
-        results['video'] = download_segment(args.url, args.start, args.end, args.output_dir, 'video', video_id)
-
+        results['video'] = download_segment(args.url, args.start, args.end, args.output_dir, 'video', video_id, args.sub_langs, proxy)
     if not args.no_audio:
-        results['audio'] = download_segment(args.url, args.start, args.end, args.output_dir, 'audio', video_id)
-
+        results['audio'] = download_segment(args.url, args.start, args.end, args.output_dir, 'audio', video_id, args.sub_langs, proxy)
     if not args.no_subtitles:
-        results['subtitles'] = download_segment(args.url, args.start, args.end, args.output_dir, 'subtitles', video_id, args.sub_langs)
+        results['subtitles'] = download_segment(args.url, args.start, args.end, args.output_dir, 'subtitles', video_id, args.sub_langs, proxy)
 
-    # 输出结果
-    print(f"\n🎉 下载完成！文件保存在: {args.output_dir}/")
-    for content_type, filepath in results.items():
-        if filepath:
-            print(f"  ✅ {content_type.title()}: {os.path.basename(filepath)}")
+    video_dir = os.path.join(args.output_dir, video_id)
+    print(f"\n🎉 下载完成！文件保存在: {video_dir}/")
+    for ctype, path in results.items():
+        if path:
+            print(f"  ✅ {ctype.title()}: {os.path.basename(path)}")
         else:
-            print(f"  ❌ {content_type.title()}: 下载失败")
+            print(f"  ❌ {ctype.title()}: 下载失败")
 
 if __name__ == "__main__":
     main()

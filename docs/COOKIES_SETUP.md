@@ -8,16 +8,10 @@ yt-dlp内置了从主流浏览器直接获取cookie的功能，无需手动导�
 
 ```bash
 # 使用Chrome浏览器cookie
-python youtube_segment_downloader.py "https://www.youtube.com/watch?v=VIDEO_ID" --start 0 --end 30 --cookies-from-browser chrome
+python src/youtube_downloader.py "https://www.youtube.com/watch?v=VIDEO_ID" --start 0 --end 30
 
-# 使用Firefox浏览器cookie
-python youtube_segment_downloader.py "https://www.youtube.com/watch?v=VIDEO_ID" --start 0 --end 30 --cookies-from-browser firefox
-
-# 使用Edge浏览器cookie
-python youtube_segment_downloader.py "https://www.youtube.com/watch?v=VIDEO_ID" --start 0 --end 30 --cookies-from-browser edge
-
-# 使用Safari浏览器cookie
-python youtube_segment_downloader.py "https://www.youtube.com/watch?v=VIDEO_ID" --start 0 --end 30 --cookies-from-browser safari
+# 或者使用一键脚本
+./ytdl "https://www.youtube.com/watch?v=VIDEO_ID" --start 0 --end 30
 ```
 
 **要求**：确保在运行脚本前已经使用相应的浏览器访问过YouTube。
@@ -55,36 +49,28 @@ yt-dlp --cookies-from-browser edge "https://www.youtube.com/watch?v=VIDEO_ID"
 
 ## 使用Cookie下载
 
-### 方法1: 使用浏览器Cookie（最简单）
+### 使用下载器（推荐）
 ```bash
-# 使用Chrome浏览器cookie
-python youtube_segment_downloader.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5 --cookies-from-browser chrome
+# 基本使用（自动使用Chrome cookie）
+./ytdl "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5
 
-# 使用Firefox浏览器cookie
-python youtube_segment_downloader.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5 --cookies-from-browser firefox
-
-# 使用Edge浏览器cookie
-python youtube_segment_downloader.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5 --cookies-from-browser edge
-
-# 使用Safari浏览器cookie
-python youtube_segment_downloader.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5 --cookies-from-browser safari
-```
-
-### 方法2: 使用Cookie文件
-```bash
-python youtube_segment_downloader.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5 --cookies cookies.txt
+# 或者直接使用Python脚本
+python src/youtube_downloader.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5
 ```
 
 ### 高级选项:
 ```bash
-# 使用浏览器cookie + 指定输出目录
-python youtube_segment_downloader.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5 --cookies-from-browser chrome --output-dir ./downloads
+# 指定输出目录
+./ytdl "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5 --output-dir ./downloads
 
-# 使用浏览器cookie + 仅下载视频(不提取音频)
-python youtube_segment_downloader.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5 --cookies-from-browser chrome --no-audio
+# 仅下载视频(不提取音频)
+./ytdl "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5 --no-audio
 
-# 使用浏览器cookie + 不下载字幕
-python youtube_segment_downloader.py "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5 --cookies-from-browser chrome --no-subtitles
+# 不下载字幕
+./ytdl "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5 --no-subtitles
+
+# 指定字幕语言
+./ytdl "https://www.youtube.com/watch?v=jNQXAC9IVRw" --start 0 --end 5 --sub-langs en,ja
 ```
 
 ## 注意事项

@@ -1,17 +1,10 @@
 #!/bin/bash
-# YouTube下载器一键执行脚本 - 最终版本
-
-# 设置SOCKS代理（如果存在）
-if netstat -an 2>/dev/null | grep -q ":7890.*LISTEN"; then
-    export ALL_PROXY=socks5://127.0.0.1:7890
-    export https_proxy=socks5://127.0.0.1:7890
-    export http_proxy=socks5://127.0.0.1:7890
-    echo "🌐 检测到SOCKS代理，已自动配置"
-fi
+# YouTube下载器一键执行脚本 - 改进版本
+# 使用两阶段下载策略：先下载较长片段，再精确切割
 
 # 显示帮助信息
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
-    echo "🎯 YouTube下载器 - 一键执行版"
+    echo "🎯 YouTube下载器 - 改进版本"
     echo ""
     echo "使用方法:"
     echo "  $0 URL --start 时间 --end 时间 [选项]"
@@ -28,6 +21,11 @@ if [[ "$1" == "--help" || "$1" == "-h" ]]; then
     echo "  --no-subtitles      不下载字幕"
     echo "  --sub-langs LANGS   字幕语言，逗号分隔 (默认: zh-CN,zh,en,ja)"
     echo "                      例如: en,ja 或 zh-CN,en"
+    echo ""
+    echo "改进特性:"
+    echo "  - 使用两阶段下载策略，确保精确的时间段"
+    echo "  - 视频质量限制在480p以下，加快下载速度"
+    echo "  - 使用HTTP代理，提高兼容性"
     exit 0
 fi
 
