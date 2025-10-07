@@ -1,0 +1,44 @@
+#!/bin/bash
+# YouTube下载器一键执行脚本 - 改进版本
+# 使用两阶段下载策略：先下载较长片段，再精确切割
+
+# 显示帮助信息
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    echo "🎯 YouTube下载器 - 改进版本"
+    echo ""
+    echo "使用方法:"
+    echo "  $0 URL --start 时间 --end 时间 [选项]"
+    echo ""
+    echo "示例:"
+    echo "  $0 \"https://www.youtube.com/watch?v=yJqOe-tKj-U\" --start 2:00 --end 3:00"
+    echo "  $0 \"URL\" --start 120 --end 180 --no-video"
+    echo "  $0 \"URL\" --start 2:00 --end 3:00 --sub-langs en,ja"
+    echo ""
+    echo "选项:"
+    echo "  --output-dir DIR     输出目录 (默认: downloads)"
+    echo "  --no-video          不下载视频"
+    echo "  --no-audio          不下载音频"
+    echo "  --no-subtitles      不下载字幕"
+    echo "  --sub-langs LANGS   字幕语言，逗号分隔 (默认: zh-CN,zh,en,ja)"
+    echo "                      例如: en,ja 或 zh-CN,en"
+    echo ""
+    echo "改进特性:"
+    echo "  - 使用两阶段下载策略，确保精确的时间段"
+    echo "  - 视频质量限制在480p以下，加快下载速度"
+    echo "  - 使用HTTP代理，提高兼容性"
+    exit 0
+fi
+
+# 检查参数
+if [[ $# -lt 3 ]]; then
+    echo "❌ 参数不足"
+    echo "使用: $0 --help 查看帮助"
+    exit 1
+fi
+
+# 执行主脚本
+echo "🚀 启动YouTube下载器..."
+python3 "$(dirname "$0")/src/youtube_downloader_v2.py" "$@" || exit 1
+
+echo "✅ 执行完成！"
+exit 0
