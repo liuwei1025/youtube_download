@@ -31,7 +31,9 @@ from youtube_downloader import (
 
 # 全局变量
 tasks_db: Dict[str, dict] = {}
-DOWNLOADS_DIR = os.environ.get('DOWNLOADS_DIR', '/tmp/downloads')
+# 默认保存在项目根目录的 downloads 文件夹
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DOWNLOADS_DIR = os.environ.get('DOWNLOADS_DIR', os.path.join(BASE_DIR, 'downloads'))
 
 # 确保下载目录存在
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)

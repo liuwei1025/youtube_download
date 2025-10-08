@@ -56,21 +56,7 @@ def check_dependencies():
     """检查必要的依赖是否安装"""
     logger = logging.getLogger(__name__)
     dependencies = ['yt-dlp', 'ffmpeg']
-    missing = []
-    
-    for dep in dependencies:
-        try:
-            result = subprocess.run([dep, '--version'], 
-                                  capture_output=True, text=True, check=True)
-            logger.info(f"✅ {dep} 已安装")
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            missing.append(dep)
-            logger.error(f"❌ {dep} 未安装或不在PATH中")
-    
-    if missing:
-        logger.error(f"缺少依赖: {', '.join(missing)}")
-        logger.error("请安装缺少的依赖后重试")
-        return False
+
     return True
 
 def extract_video_id(url):
@@ -152,7 +138,10 @@ def run_command(cmd, cwd=None, max_retries=3):
     return False, "未知错误"
 
 def ensure_video_dir(base_dir, video_id):
-    video_dir = os.path.join(base_dir, video_id)
+    # 确保使用绝对路径，基于当前脚本所在目录
+    script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    abs_base_dir = os.path.join(script_dir, base_dir)
+    video_dir = os.path.join(abs_base_dir, video_id)
     os.makedirs(video_dir, exist_ok=True)
     return video_dir
 
@@ -326,6 +315,9 @@ def download_segment(config: DownloadConfig, content_type: str, video_id: str, p
     if content_type == 'video':
         filename = f"segment_{safe_start}-{safe_end}.mp4"
         filepath = os.path.join(video_dir, filename)
+        if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+            logger.info(f"✅ 视频片段已存在，跳过下载: {filename}")
+            return filepath
         logger.info("📥 开始下载并处理视频片段...")
         result = download_and_cut_segment(config, filepath, 'video', proxy)
         return result
@@ -333,11 +325,30 @@ def download_segment(config: DownloadConfig, content_type: str, video_id: str, p
     elif content_type == 'audio':
         filename = f"audio_{safe_start}-{safe_end}.mp3"
         filepath = os.path.join(video_dir, filename)
+        if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+            logger.info(f"✅ 音频片段已存在，跳过下载: {filename}")
+            return filepath
         logger.info("🎵 开始下载并处理音频片段...")
         result = download_and_cut_segment(config, filepath, 'audio', proxy)
         return result
         
     elif content_type == 'subtitles':
+        safe_start = config.start_time.replace(':', '_')
+        safe_end = config.end_time.replace(':', '_')
+        # 检查所有配置的语言的字幕是否都已存在
+        all_subtitles_exist = True
+        for lang in config.subtitle_langs.split(','):
+            lang = lang.strip()
+            filename = f"subtitles_{safe_start}-{safe_end}.{lang}.vtt"
+            filepath = os.path.join(video_dir, filename)
+            if not (os.path.exists(filepath) and os.path.getsize(filepath) > 0):
+                all_subtitles_exist = False
+                break
+        
+        if all_subtitles_exist:
+            logger.info(f"✅ 所有字幕文件已存在，跳过下载")
+            return os.path.join(video_dir, f"subtitles_{safe_start}-{safe_end}.{config.subtitle_langs.split(',')[0].strip()}.vtt")
+        
         return download_subtitles(config, video_dir, video_id, proxy)
         
     else:
