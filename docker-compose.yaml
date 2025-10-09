@@ -1,0 +1,68 @@
+services:
+  # -------------- PostgreSQL --------------
+  postgres:
+    image: postgres:16
+    container_name: n8n_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: n8n
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: n8npass
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  # -------------- n8n --------------
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: n8n
+      DB_POSTGRESDB_PASSWORD: n8npass
+      TZ: Asia/Shanghai
+      N8N_ENCRYPTION_KEY: changeMeKey
+      N8N_BASIC_AUTH_ACTIVE: true
+      N8N_BASIC_AUTH_USER: admin
+      N8N_BASIC_AUTH_PASSWORD: admin
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - postgres
+    networks:
+      - internal
+
+  # -------------- YouTube 下载器 API 服务 --------------
+  youtube-dl-api:
+    build: .
+    platform: linux/arm64  # 支持 M1/M2 Mac
+    container_name: youtube-dl-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      HTTP_PROXY: "http://host.docker.internal:7890"
+      HTTPS_PROXY: "http://host.docker.internal:7890"
+      NO_PROXY: "localhost,127.0.0.1,n8n,postgres"
+      DOWNLOADS_DIR: "/app/downloads"
+      TZ: Asia/Shanghai
+    volumes:
+      - ./downloads:/app/downloads
+      - ./cookies:/app/cookies:ro
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  n8n_data:
+  db_data:

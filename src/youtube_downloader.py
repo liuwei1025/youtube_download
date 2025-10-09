@@ -15,14 +15,93 @@ import re
 import glob
 import shutil
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import time
 try:
     from tqdm import tqdm
     HAS_TQDM = True
 except ImportError:
     HAS_TQDM = False
+
+class ThreadSafeProgress:
+    """线程安全的进度条包装类"""
+    def __init__(self, total=None, desc=None, unit=None):
+        self.lock = threading.Lock()
+        if HAS_TQDM:
+            self.progress = tqdm(total=total, desc=desc, unit=unit)
+        else:
+            self.progress = None
+            self.current = 0
+            self.total = total
+            self.desc = desc
+
+    def update(self, n=1):
+        with self.lock:
+            if self.progress:
+                self.progress.update(n)
+            else:
+                self.current += n
+                if self.desc:
+                    print(f"{self.desc}: {self.current}/{self.total}")
+
+    def set_postfix_str(self, text):
+        with self.lock:
+            if self.progress:
+                self.progress.set_postfix_str(text)
+            else:
+                print(f"{text}")
+
+    def close(self):
+        with self.lock:
+            if self.progress:
+                self.progress.close()
+
+class ThreadPoolManager:
+    """线程池管理器"""
+    def __init__(self, max_workers=3):
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.progress_lock = threading.Lock()
+        self.results_lock = threading.Lock()
+        self.logger = logging.getLogger(__name__)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.executor.shutdown(wait=True)
+        if exc_type:
+            self.logger.error(f"线程池执行出错: {exc_val}")
+            return False
+        return True
+
+    def wait_for_results(self, futures_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """等待并收集所有任务的结果"""
+        results = {}
+        try:
+            if isinstance(futures_dict, dict):
+                for key, future in futures_dict.items():
+                    try:
+                        results[key] = future.result()
+                    except Exception as e:
+                        self.logger.error(f"任务 {key} 执行失败: {e}")
+                        results[key] = None
+            else:  # List of futures
+                for future in as_completed(futures_dict):
+                    try:
+                        result = future.result()
+                        with self.results_lock:
+                            if isinstance(result, dict):
+                                results.update(result)
+                            else:
+                                results[id(future)] = result
+                    except Exception as e:
+                        self.logger.error(f"任务执行失败: {e}")
+        except Exception as e:
+            self.logger.error(f"等待任务结果时出错: {e}")
+        return results
 
 @dataclass
 class DownloadConfig:
@@ -381,17 +460,14 @@ def process_batch_urls(urls_file: str, config: DownloadConfig) -> List[dict]:
     
     logger.info(f"开始批量处理 {len(urls)} 个URL")
     
-    # 创建进度条
-    if HAS_TQDM:
-        url_iterator = tqdm(urls, desc="处理URL", unit="个")
-    else:
-        url_iterator = urls
+    # 创建线程安全的进度条
+    progress = ThreadSafeProgress(total=len(urls), desc="处理URL", unit="个")
+    success_count = 0
     
-    for i, url in enumerate(url_iterator, 1):
-        if not HAS_TQDM:
-            logger.info(f"处理第 {i}/{len(urls)} 个URL: {url}")
-        else:
-            url_iterator.set_postfix_str(f"当前: {url[:50]}...")
+    def process_url(url: str) -> dict:
+        """处理单个URL的包装函数"""
+        nonlocal success_count
+        progress.set_postfix_str(f"当前: {url[:50]}...")
         
         # 为每个URL创建独立配置
         url_config = DownloadConfig(
@@ -410,21 +486,33 @@ def process_batch_urls(urls_file: str, config: DownloadConfig) -> List[dict]:
         )
         
         result = process_single_url(url_config)
-        results.append({
-            'url': url,
-            'success': result is not None,
-            'result': result
-        })
+        success = result is not None
         
-        # 更新进度条状态
-        if HAS_TQDM:
-            success_count = sum(1 for r in results if r['success'])
-            url_iterator.set_description(f"处理URL (成功: {success_count}/{len(results)})")
+        with threading.Lock():
+            if success:
+                success_count += 1
+            progress.set_postfix_str(f"成功: {success_count}/{len(urls)}")
+            progress.update(1)
+        
+        return {
+            'url': url,
+            'success': success,
+            'result': result
+        }
     
+    try:
+        with ThreadPoolManager(max_workers=3) as pool:
+            futures = [pool.executor.submit(process_url, url) for url in urls]
+            results_dict = pool.wait_for_results(futures)
+            results = list(results_dict.values())
+    finally:
+        progress.close()
+    
+    logger.info(f"批量处理完成: {success_count}/{len(urls)} 个URL成功")
     return results
 
 def process_single_url(config: DownloadConfig) -> Optional[dict]:
-    """处理单个URL"""
+    """处理单个URL，使用线程池并行下载各个组件"""
     logger = logging.getLogger(__name__)
     
     # 提取视频ID
@@ -444,15 +532,22 @@ def process_single_url(config: DownloadConfig) -> Optional[dict]:
     # 创建输出目录
     os.makedirs(config.output_dir, exist_ok=True)
     
-    # 下载各种内容
-    results = {}
-    
+    # 准备下载任务
+    download_tasks = {}
     if config.download_video:
-        results['video'] = download_segment(config, 'video', video_id, proxy)
+        download_tasks['video'] = ('video', video_id, proxy)
     if config.download_audio:
-        results['audio'] = download_segment(config, 'audio', video_id, proxy)
+        download_tasks['audio'] = ('audio', video_id, proxy)
     if config.download_subtitles:
-        results['subtitles'] = download_segment(config, 'subtitles', video_id, proxy)
+        download_tasks['subtitles'] = ('subtitles', video_id, proxy)
+    
+    # 使用线程池并行下载
+    with ThreadPoolManager(max_workers=3) as pool:
+        futures = {
+            task_type: pool.executor.submit(download_segment, config, *task_args)
+            for task_type, task_args in download_tasks.items()
+        }
+        results = pool.wait_for_results(futures)
     
     # 输出结果
     video_dir = os.path.join(config.output_dir, video_id)

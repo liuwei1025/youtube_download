@@ -62,3 +62,4 @@ test_download_*.mp3
 # Environment
 .env
 .env.local
+cookies/Cookies
