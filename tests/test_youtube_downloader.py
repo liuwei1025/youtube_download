@@ -18,7 +18,8 @@ from youtube_downloader import (
     parse_time,
     DownloadConfig,
     ensure_video_dir,
-    check_disk_space
+    check_disk_space,
+    burn_subtitles_to_video
 )
 
 
@@ -439,4 +440,180 @@ class TestEdgeCases:
         except Exception as e:
             # 某些文件系统可能不支持
             pytest.skip(f"文件系统不支持 Unicode: {e}")
+
+
+class TestSubtitleBurning:
+    """字幕烧录功能测试"""
+    
+    @pytest.fixture
+    def test_video_path(self):
+        """返回测试视频文件路径"""
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(project_root, 'downloads', 'test_video_id', 'segment_00_10-00_30.mp4')
+    
+    @pytest.fixture
+    def test_subtitle_path(self):
+        """返回测试字幕文件路径"""
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(project_root, 'downloads', 'test_video_id', 'subtitles_00_10-00_30.en.vtt')
+    
+    @pytest.fixture
+    def test_output_path(self, temp_downloads_dir):
+        """返回测试输出文件路径"""
+        return os.path.join(temp_downloads_dir, 'test_output_with_subs.mp4')
+    
+    def test_burn_subtitles_success(self, test_video_path, test_subtitle_path, test_output_path):
+        """测试成功烧录字幕"""
+        # 跳过如果测试文件不存在
+        if not os.path.exists(test_video_path):
+            pytest.skip("测试视频文件不存在")
+        if not os.path.exists(test_subtitle_path):
+            pytest.skip("测试字幕文件不存在")
+        
+        # 检查视频文件是否有效
+        if os.path.getsize(test_video_path) == 0:
+            pytest.skip("测试视频文件为空")
+        
+        result = burn_subtitles_to_video(test_video_path, test_subtitle_path, test_output_path)
+        
+        # 如果ffmpeg不支持字幕烧录，跳过测试
+        if result is None:
+            pytest.skip("ffmpeg不支持字幕烧录（可能缺少libass支持）")
+        
+        # 验证返回值
+        assert result == test_output_path
+        
+        # 验证输出文件存在
+        assert os.path.exists(test_output_path)
+        
+        # 验证文件大小大于0
+        assert os.path.getsize(test_output_path) > 0
+        
+        # 验证输出文件大小合理（应该与原视频大小相近或稍大）
+        original_size = os.path.getsize(test_video_path)
+        output_size = os.path.getsize(test_output_path)
+        # 允许输出文件是原文件的0.5-5倍（取决于编码设置）
+        assert output_size > original_size * 0.5
+        assert output_size < original_size * 5
+    
+    def test_burn_subtitles_missing_video(self, test_subtitle_path, test_output_path):
+        """测试视频文件不存在的情况"""
+        fake_video_path = "/nonexistent/video.mp4"
+        result = burn_subtitles_to_video(fake_video_path, test_subtitle_path, test_output_path)
+        
+        # 应该返回 None
+        assert result is None
+        
+        # 输出文件不应该被创建
+        assert not os.path.exists(test_output_path)
+    
+    def test_burn_subtitles_missing_subtitle(self, test_video_path, test_output_path):
+        """测试字幕文件不存在的情况"""
+        if not os.path.exists(test_video_path):
+            pytest.skip("测试视频文件不存在")
+        
+        fake_subtitle_path = "/nonexistent/subtitle.vtt"
+        result = burn_subtitles_to_video(test_video_path, fake_subtitle_path, test_output_path)
+        
+        # 应该返回 None
+        assert result is None
+        
+        # 输出文件不应该被创建
+        assert not os.path.exists(test_output_path)
+    
+    def test_burn_subtitles_with_real_files(self):
+        """使用真实下载文件测试字幕烧录"""
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        downloads_dir = os.path.join(project_root, 'downloads')
+        
+        # 寻找第一个包含视频和字幕的目录
+        test_dirs = [
+            '1pw9ycK2krg',
+            '24UIccYCp6c', 
+            '72eLohjOiu8',
+            'test_video_id'
+        ]
+        
+        video_path = None
+        subtitle_path = None
+        
+        for video_id in test_dirs:
+            video_dir = os.path.join(downloads_dir, video_id)
+            if not os.path.exists(video_dir):
+                continue
+            
+            # 查找视频文件
+            video_files = [f for f in os.listdir(video_dir) if f.startswith('segment_') and f.endswith('.mp4')]
+            if not video_files:
+                continue
+            
+            video_file = video_files[0]
+            video_path = os.path.join(video_dir, video_file)
+            
+            # 查找对应的字幕文件
+            base_name = video_file.replace('segment_', '').replace('.mp4', '')
+            subtitle_files = [f for f in os.listdir(video_dir) if f.startswith(f'subtitles_{base_name}') and f.endswith('.vtt')]
+            if not subtitle_files:
+                continue
+            
+            subtitle_path = os.path.join(video_dir, subtitle_files[0])
+            break
+        
+        # 如果找不到测试文件，跳过测试
+        if not video_path or not subtitle_path:
+            pytest.skip("未找到可用的测试文件")
+        
+        # 生成输出路径
+        output_path = video_path.replace('.mp4', '_with_subs_test.mp4')
+        
+        try:
+            result = burn_subtitles_to_video(video_path, subtitle_path, output_path)
+            
+            # 如果ffmpeg不支持字幕烧录，跳过测试
+            if result is None:
+                pytest.skip("ffmpeg不支持字幕烧录（可能缺少libass支持）")
+            
+            # 验证结果
+            assert os.path.exists(output_path)
+            assert os.path.getsize(output_path) > 0
+            
+            print(f"\n✅ 字幕烧录测试成功:")
+            print(f"  视频: {os.path.basename(video_path)}")
+            print(f"  字幕: {os.path.basename(subtitle_path)}")
+            print(f"  输出: {os.path.basename(output_path)}")
+            print(f"  原始大小: {os.path.getsize(video_path) / (1024*1024):.2f} MB")
+            print(f"  输出大小: {os.path.getsize(output_path) / (1024*1024):.2f} MB")
+            
+        finally:
+            # 清理测试文件
+            if os.path.exists(output_path):
+                os.remove(output_path)
+    
+    def test_download_config_burn_subtitles_flag(self):
+        """测试DownloadConfig中的burn_subtitles配置"""
+        # 默认应该启用字幕烧录
+        config = DownloadConfig(
+            url="test_url",
+            start_time="0:10",
+            end_time="0:30"
+        )
+        assert config.burn_subtitles is True
+        
+        # 显式禁用字幕烧录
+        config = DownloadConfig(
+            url="test_url",
+            start_time="0:10",
+            end_time="0:30",
+            burn_subtitles=False
+        )
+        assert config.burn_subtitles is False
+        
+        # 显式启用字幕烧录
+        config = DownloadConfig(
+            url="test_url",
+            start_time="0:10",
+            end_time="0:30",
+            burn_subtitles=True
+        )
+        assert config.burn_subtitles is True
 

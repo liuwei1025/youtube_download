@@ -115,6 +115,7 @@ class DownloadConfig:
     download_video: bool = True
     download_audio: bool = True
     download_subtitles: bool = True
+    burn_subtitles: bool = True
     max_retries: int = 3
     video_quality: str = 'best[height<=480]'
     audio_quality: str = '192K'
@@ -292,6 +293,86 @@ def download_subtitles(config: DownloadConfig, video_dir: str, video_id: str, pr
     finally:
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
+
+def burn_subtitles_to_video(video_path: str, subtitle_path: str, output_path: str):
+    """将字幕烧录到视频上
+    
+    Args:
+        video_path: 原始视频文件路径
+        subtitle_path: 字幕文件路径
+        output_path: 输出视频文件路径
+    
+    Returns:
+        成功返回输出文件路径，失败返回None
+    """
+    logger = logging.getLogger(__name__)
+    
+    if not os.path.exists(video_path):
+        logger.error(f"视频文件不存在: {video_path}")
+        return None
+    
+    if not os.path.exists(subtitle_path):
+        logger.error(f"字幕文件不存在: {subtitle_path}")
+        return None
+    
+    try:
+        logger.info(f"🎬 开始烧录字幕到视频...")
+        logger.info(f"  视频: {os.path.basename(video_path)}")
+        logger.info(f"  字幕: {os.path.basename(subtitle_path)}")
+        
+        # 方法1: 尝试使用subtitles滤镜（需要libass支持）
+        subtitle_path_escaped = subtitle_path.replace('\\', '/').replace(':', '\\:')
+        
+        ffmpeg_cmd_with_filter = [
+            'ffmpeg', '-y',
+            '-i', video_path,
+            '-vf', f"subtitles={subtitle_path_escaped}:force_style='FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=1,Shadow=1'",
+            '-c:a', 'copy',
+            '-preset', 'fast',
+            output_path
+        ]
+        
+        # 方法2: 使用overlay方式（备用方案）
+        ffmpeg_cmd_with_overlay = [
+            'ffmpeg', '-y',
+            '-i', video_path,
+            '-i', subtitle_path,
+            '-c:v', 'libx264',
+            '-c:a', 'copy',
+            '-c:s', 'mov_text',
+            '-metadata:s:s:0', 'language=eng',
+            '-disposition:s:0', 'default',
+            '-preset', 'fast',
+            output_path
+        ]
+        
+        # 先尝试方法1
+        success, output = run_command(ffmpeg_cmd_with_filter, max_retries=1)
+        
+        # 如果方法1失败（可能是因为缺少subtitles滤镜），尝试方法2
+        if not success and 'No such filter' in output:
+            logger.info("字幕滤镜不可用，尝试使用备用方案...")
+            success, output = run_command(ffmpeg_cmd_with_overlay, max_retries=2)
+        elif not success:
+            # 如果方法1因其他原因失败，重试一次
+            logger.info("重试字幕烧录...")
+            success, output = run_command(ffmpeg_cmd_with_filter, max_retries=1)
+        if not success:
+            logger.error(f"字幕烧录失败: {output}")
+            return None
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            logger.info(f"✅ 字幕烧录完成: {os.path.basename(output_path)}")
+            file_size_mb = os.path.getsize(output_path) / (1024 * 1024)
+            logger.info(f"  文件大小: {file_size_mb:.2f} MB")
+            return output_path
+        else:
+            logger.error("烧录后的视频文件无效")
+            return None
+            
+    except Exception as e:
+        logger.error(f"烧录字幕时出错: {e}")
+        return None
 
 def download_and_cut_segment(config: DownloadConfig, output_path: str, content_type: str, proxy: str):
     """下载并切割视频/音频片段"""
@@ -480,6 +561,7 @@ def process_batch_urls(urls_file: str, config: DownloadConfig) -> List[dict]:
             download_video=config.download_video,
             download_audio=config.download_audio,
             download_subtitles=config.download_subtitles,
+            burn_subtitles=config.burn_subtitles,
             max_retries=config.max_retries,
             video_quality=config.video_quality,
             audio_quality=config.audio_quality
@@ -559,6 +641,28 @@ def process_single_url(config: DownloadConfig) -> Optional[dict]:
         else:
             logger.warning(f"  ❌ {ctype.title()}: 下载失败")
     
+    # 烧录字幕到视频
+    if config.burn_subtitles and results.get('video') and results.get('subtitles'):
+        video_path = results['video']
+        subtitle_path = results['subtitles']
+        
+        # 生成带字幕的视频文件名
+        video_basename = os.path.basename(video_path)
+        video_name, video_ext = os.path.splitext(video_basename)
+        output_with_subs = os.path.join(video_dir, f"{video_name}_with_subs{video_ext}")
+        
+        # 检查是否已经存在
+        if os.path.exists(output_with_subs) and os.path.getsize(output_with_subs) > 0:
+            logger.info(f"✅ 带字幕的视频已存在: {os.path.basename(output_with_subs)}")
+            results['video_with_subtitles'] = output_with_subs
+        else:
+            # 执行字幕烧录
+            burned_video = burn_subtitles_to_video(video_path, subtitle_path, output_with_subs)
+            if burned_video:
+                results['video_with_subtitles'] = burned_video
+            else:
+                logger.warning("字幕烧录失败，保留原始视频文件")
+    
     return results
 
 def main():
@@ -573,6 +677,7 @@ def main():
     parser.add_argument('--no-video', action='store_true', help='不下载视频')
     parser.add_argument('--no-audio', action='store_true', help='不下载音频')
     parser.add_argument('--no-subtitles', action='store_true', help='不下载字幕')
+    parser.add_argument('--no-burn-subtitles', action='store_true', help='不烧录字幕到视频')
     parser.add_argument('--sub-langs', default='zh,en', help='字幕语言代码')
     parser.add_argument('--proxy', help='自定义代理地址，如 http://127.0.0.1:7890')
     parser.add_argument('--batch', help='批量处理URL文件')
@@ -615,6 +720,7 @@ def main():
         download_video=not args.no_video,
         download_audio=not args.no_audio,
         download_subtitles=not args.no_subtitles,
+        burn_subtitles=not args.no_burn_subtitles,
         max_retries=args.max_retries,
         video_quality=args.video_quality,
         audio_quality=args.audio_quality
