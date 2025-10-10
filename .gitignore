@@ -58,6 +58,12 @@ tmp/
 # Test files
 test_download_*.mp4
 test_download_*.mp3
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+*.cover
+.hypothesis/
 
 # Environment
 .env
