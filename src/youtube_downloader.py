@@ -165,6 +165,119 @@ def parse_time(time_str):
         seconds = total_seconds % 60
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
+def time_to_seconds(time_str):
+    """将时间字符串转换为秒数"""
+    if ':' in time_str:
+        parts = time_str.split(':')
+        if len(parts) == 3:
+            hours, minutes, seconds = map(float, parts)
+            return hours * 3600 + minutes * 60 + seconds
+        elif len(parts) == 2:
+            minutes, seconds = map(float, parts)
+            return minutes * 60 + seconds
+    else:
+        return float(time_str)
+
+def seconds_to_vtt_time(seconds):
+    """将秒数转换为VTT时间格式 (HH:MM:SS.mmm)"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = seconds % 60
+    milliseconds = int((secs - int(secs)) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{int(secs):02d}.{milliseconds:03d}"
+
+def adjust_subtitle_timestamps(subtitle_path, start_offset_seconds, end_offset_seconds):
+    """调整字幕时间戳，使其与切割后的视频对齐
+    
+    Args:
+        subtitle_path: 字幕文件路径
+        start_offset_seconds: 起始时间偏移（秒）
+        end_offset_seconds: 结束时间偏移（秒）
+    
+    Returns:
+        调整后的字幕文件路径，失败返回None
+    """
+    logger = logging.getLogger(__name__)
+    
+    if not os.path.exists(subtitle_path):
+        logger.error(f"字幕文件不存在: {subtitle_path}")
+        return None
+    
+    try:
+        # 读取原始字幕文件
+        with open(subtitle_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        adjusted_lines = []
+        skip_block = False
+        in_header = True
+        total_timestamps = 0
+        kept_timestamps = 0
+        
+        for i, line in enumerate(lines):
+            # 保留WEBVTT头部和元数据
+            if in_header:
+                if line.strip() == '' or line.startswith('WEBVTT') or line.startswith('Kind:') or line.startswith('Language:'):
+                    adjusted_lines.append(line)
+                    if line.strip() == '' and len(adjusted_lines) > 1:
+                        in_header = False
+                    continue
+            
+            # VTT时间戳格式: HH:MM:SS.mmm --> HH:MM:SS.mmm (可能带额外属性)
+            time_pattern = r'(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})(.*)'
+            match = re.match(time_pattern, line)
+            
+            if match:
+                total_timestamps += 1
+                # 解析时间戳
+                start_time_str = match.group(1)
+                end_time_str = match.group(2)
+                extra_attrs = match.group(3)  # 保留额外的属性，如 align:start position:0%
+                
+                # 转换为秒数
+                start_parts = start_time_str.split(':')
+                start_seconds = float(start_parts[0]) * 3600 + float(start_parts[1]) * 60 + float(start_parts[2])
+                
+                end_parts = end_time_str.split(':')
+                end_seconds = float(end_parts[0]) * 3600 + float(end_parts[1]) * 60 + float(end_parts[2])
+                
+                # 检查字幕是否在指定时间范围内
+                if end_seconds < start_offset_seconds or start_seconds > end_offset_seconds:
+                    # 跳过不在范围内的字幕块
+                    skip_block = True
+                    continue
+                
+                kept_timestamps += 1
+                if kept_timestamps == 1:
+                    logger.debug(f"第一个保留的字幕在第 {i+1} 行: {start_time_str} --> {end_time_str}")
+                
+                # 调整时间戳（减去起始偏移量）
+                adjusted_start = max(0, start_seconds - start_offset_seconds)
+                adjusted_end = max(0, end_seconds - start_offset_seconds)
+                
+                # 转换回VTT格式，保留额外属性
+                adjusted_line = f"{seconds_to_vtt_time(adjusted_start)} --> {seconds_to_vtt_time(adjusted_end)}{extra_attrs}"
+                if not adjusted_line.endswith('\n'):
+                    adjusted_line += '\n'
+                adjusted_lines.append(adjusted_line)
+                skip_block = False  # 找到有效时间戳，开始保留后续文本
+            else:
+                # 非时间戳行：只有在不跳过时才保留
+                if not skip_block:
+                    adjusted_lines.append(line)
+        
+        # 写回文件
+        with open(subtitle_path, 'w', encoding='utf-8') as f:
+            f.writelines(adjusted_lines)
+        
+        logger.info(f"✅ 字幕时间戳已调整: {os.path.basename(subtitle_path)}")
+        logger.info(f"   处理统计: 总时间戳 {total_timestamps} 个, 保留 {kept_timestamps} 个, 输出 {len(adjusted_lines)} 行")
+        return subtitle_path
+        
+    except Exception as e:
+        logger.error(f"调整字幕时间戳时出错: {e}")
+        return None
+
 def setup_proxy(config: DownloadConfig):
     """设置代理配置"""
     logger = logging.getLogger(__name__)
@@ -266,6 +379,10 @@ def download_subtitles(config: DownloadConfig, video_dir: str, video_id: str, pr
             logger.error(f"字幕下载失败: {output}")
             return None
             
+        # 计算时间偏移量（秒）
+        start_offset_seconds = time_to_seconds(config.start_time)
+        end_offset_seconds = time_to_seconds(config.end_time)
+            
         subtitle_files = []
         for lang in config.subtitle_langs.split(','):
             lang = lang.strip()
@@ -277,8 +394,15 @@ def download_subtitles(config: DownloadConfig, video_dir: str, video_id: str, pr
                 new_name = f"subtitles_{safe_start}-{safe_end}.{lang}.vtt"
                 new_path = os.path.join(video_dir, new_name)
                 shutil.move(matches[0], new_path)
-                subtitle_files.append(new_path)
-                logger.info(f"✅ {lang} 字幕下载完成")
+                
+                # 调整字幕时间戳，使其与切割后的视频对齐
+                adjusted_path = adjust_subtitle_timestamps(new_path, start_offset_seconds, end_offset_seconds)
+                if adjusted_path:
+                    subtitle_files.append(adjusted_path)
+                    logger.info(f"✅ {lang} 字幕下载并调整完成")
+                else:
+                    logger.warning(f"⚠️  {lang} 字幕时间戳调整失败，但文件已保存")
+                    subtitle_files.append(new_path)
                 
         if subtitle_files:
             logger.info(f"字幕下载完成: {', '.join(os.path.basename(f) for f in subtitle_files)}")
@@ -428,10 +552,20 @@ def download_and_cut_segment(config: DownloadConfig, output_path: str, content_t
         # 使用ffmpeg切割
         logger.info(f"开始切割 {content_type} 片段: {start_str} - {end_str}")
         if content_type == 'video':
+            # 使用两阶段切割策略实现精确切割：
+            # 1. -ss 放在 -i 之前：快速定位到目标时间附近（可能不精确）
+            # 2. 使用重新编码：确保从精确的时间点开始，避免关键帧导致的画面静止问题
+            # 注意：虽然重新编码较慢，但能确保视频从第一帧就是动态的
             ffmpeg_cmd = [
-                'ffmpeg', '-y', '-i', temp_path, 
-                '-ss', start_str, '-to', end_str, 
-                '-c:v', 'copy', '-c:a', 'copy', 
+                'ffmpeg', '-y',
+                '-ss', start_str,  # 输入seek：快速定位
+                '-i', temp_path,
+                '-to', end_str,
+                '-c:v', 'libx264',  # 重新编码以实现精确切割
+                '-preset', 'fast',   # 使用快速预设平衡速度和质量
+                '-crf', '23',        # 恒定质量模式（23是默认值，质量较好）
+                '-c:a', 'aac',       # 音频也重新编码以保持同步
+                '-b:a', '128k',      # 音频比特率
                 output_path
             ]
         else:
