@@ -21,13 +21,12 @@ from contextlib import asynccontextmanager
 
 # 导入原有的下载功能
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
-from youtube_downloader import (
+from downloader import (
     DownloadConfig, 
     process_single_url,
-    setup_logging,
-    check_dependencies,
-    extract_video_id
+    setup_logging
 )
+from downloader.utils import check_dependencies, extract_video_id
 
 # 全局变量
 tasks_db: Dict[str, dict] = {}

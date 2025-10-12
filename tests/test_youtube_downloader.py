@@ -13,14 +13,9 @@ import pytest
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(project_root, 'src'))
 
-from youtube_downloader import (
-    extract_video_id,
-    parse_time,
-    DownloadConfig,
-    ensure_video_dir,
-    check_disk_space,
-    burn_subtitles_to_video
-)
+from downloader import DownloadConfig
+from downloader.utils import extract_video_id, parse_time, ensure_video_dir, check_disk_space
+from downloader.subtitle import burn_subtitles_to_video
 
 
 class TestVideoIdExtraction:
@@ -222,7 +217,7 @@ class TestProxySetup:
     
     def test_proxy_with_explicit_config(self):
         """测试显式指定代理"""
-        from youtube_downloader import setup_proxy
+        from downloader.utils import setup_proxy
         
         config = DownloadConfig(
             url="test_url",
@@ -237,7 +232,7 @@ class TestProxySetup:
     
     def test_proxy_with_environment_variable(self):
         """测试环境变量代理"""
-        from youtube_downloader import setup_proxy
+        from downloader.utils import setup_proxy
         
         # 设置环境变量
         os.environ['HTTP_PROXY'] = "http://env-proxy:8080"
@@ -257,7 +252,7 @@ class TestProxySetup:
     
     def test_proxy_default_fallback(self):
         """测试默认代理回退"""
-        from youtube_downloader import setup_proxy
+        from downloader.utils import setup_proxy
         
         # 清除环境变量
         for key in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']:
@@ -280,7 +275,7 @@ class TestCommandExecution:
     
     def test_run_simple_command(self):
         """测试执行简单命令"""
-        from youtube_downloader import run_command
+        from downloader.utils import run_command
         
         # 执行 echo 命令
         success, output = run_command(['echo', 'test'])
@@ -289,7 +284,7 @@ class TestCommandExecution:
     
     def test_run_failing_command(self):
         """测试执行失败的命令"""
-        from youtube_downloader import run_command
+        from downloader.utils import run_command
         
         # 执行会失败的命令
         success, output = run_command(['ls', '/nonexistent/path/12345'], max_retries=1)
@@ -297,7 +292,7 @@ class TestCommandExecution:
     
     def test_run_nonexistent_command(self):
         """测试执行不存在的命令"""
-        from youtube_downloader import run_command
+        from downloader.utils import run_command
         
         success, output = run_command(['nonexistent_command_12345'], max_retries=1)
         assert success is False
