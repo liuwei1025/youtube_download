@@ -27,22 +27,14 @@ services:
     ports:
       - "5678:5678"
     environment:
-      DB_TYPE: postgresdb
-      DB_POSTGRESDB_HOST: postgres
-      DB_POSTGRESDB_PORT: 5432
-      DB_POSTGRESDB_DATABASE: n8n
-      DB_POSTGRESDB_USER: n8n
-      DB_POSTGRESDB_PASSWORD: n8npass
+      DB_TYPE: sqlite
       TZ: Asia/Shanghai
-      N8N_ENCRYPTION_KEY: changeMeKey
+      N8N_ENCRYPTION_KEY: /6hULU/iqXq9+u9mkRSNxAxbf7jK3NkB
       N8N_BASIC_AUTH_ACTIVE: true
       N8N_BASIC_AUTH_USER: admin
       N8N_BASIC_AUTH_PASSWORD: admin
     volumes:
-      - n8n_data:/home/node/.n8n
-    depends_on:
-      postgres:
-        condition: service_healthy  # 改进：等待 postgres 健康后再启动
+      - youtube_n8n_data:/home/node/.n8n
     networks:
       - internal
 
@@ -96,6 +88,7 @@ networks:
     driver: bridge
 
 volumes:
-  n8n_data:
+  youtube_n8n_data:
+    external: true
   db_data:
 
