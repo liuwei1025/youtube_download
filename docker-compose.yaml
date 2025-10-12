@@ -12,6 +12,12 @@ services:
       - db_data:/var/lib/postgresql/data
     networks:
       - internal
+    # 健康检查（新增）
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # -------------- n8n --------------
   n8n:
@@ -35,29 +41,55 @@ services:
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy  # 改进：等待 postgres 健康后再启动
     networks:
       - internal
 
   # -------------- YouTube 下载器 API 服务 --------------
   youtube-dl-api:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
     platform: linux/arm64  # 支持 M1/M2 Mac
     container_name: youtube-dl-api
     restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
+      # 代理配置
       HTTP_PROXY: "http://host.docker.internal:7890"
       HTTPS_PROXY: "http://host.docker.internal:7890"
       NO_PROXY: "localhost,127.0.0.1,n8n,postgres"
+      # 应用配置
       DOWNLOADS_DIR: "/app/downloads"
       TZ: Asia/Shanghai
+      # Python 优化配置（新增）
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
     volumes:
       - ./downloads:/app/downloads
       - ./cookies:/app/cookies:ro
+      # 可选：日志持久化
+      # - ./logs:/app/logs
     networks:
       - internal
+    # 资源限制（新增 - 防止过度占用系统资源）
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # 健康检查（新增 - 使用已有的 /health 端点）
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
 
 networks:
   internal:
@@ -66,3 +98,4 @@ networks:
 volumes:
   n8n_data:
   db_data:
+
