@@ -1,24 +1,4 @@
 services:
-  # -------------- PostgreSQL --------------
-  postgres:
-    image: postgres:16
-    container_name: n8n_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: n8n
-      POSTGRES_USER: n8n
-      POSTGRES_PASSWORD: n8npass
-    volumes:
-      - db_data:/var/lib/postgresql/data
-    networks:
-      - internal
-    # 健康检查（新增）
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U n8n"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # -------------- n8n --------------
   n8n:
     image: docker.n8n.io/n8nio/n8n:latest
@@ -90,5 +70,4 @@ networks:
 volumes:
   youtube_n8n_data:
     external: true
-  db_data:
 
