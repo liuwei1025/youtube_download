@@ -23,7 +23,6 @@ services:
     build: 
       context: .
       dockerfile: Dockerfile
-    platform: linux/arm64  # 支持 M1/M2 Mac
     container_name: youtube-dl-api
     restart: unless-stopped
     ports:
