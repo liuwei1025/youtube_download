@@ -1,28 +1,18 @@
 # YouTube 视频片段下载器
 
-一个功能完整的 YouTube 视频下载工具，支持时间段裁剪、音频提取、字幕下载。现已支持 HTTP API 服务，可部署到 Railway.com 等云平台。
+一个功能完整的 YouTube 视频下载工具，支持时间段裁剪、音频提取、字幕下载和 HTTP API 服务。
 
 ## 🌟 主要特性
 
-### 核心功能
 - ✅ **精确时间段裁剪** - 使用两阶段下载策略，先下载完整视频再精确切割
 - ✅ **音频提取** - 自动提取音频并保存为MP3格式（可配置质量）
 - ✅ **字幕下载** - 支持多语言字幕下载（中/英/日等）
+- ✅ **HTTP API 服务** - 支持 RESTful API 调用，异步任务处理
 - ✅ **HTTP代理支持** - 智能代理配置，支持环境变量和自定义设置
-- ✅ **视频ID组织** - 按视频ID创建目录，文件管理更有序
-
-### 新增功能 (v2.0)
-- 🆕 **HTTP API 服务** - 支持 RESTful API 调用，可云端部署
-- 🆕 **Railway 部署支持** - 一键部署到 Railway.com
-- 🆕 **异步任务处理** - 后台处理下载任务，支持并发
-- 🆕 **任务状态查询** - 实时查询下载进度和状态
-- 🆕 **文件下载接口** - 通过 API 下载处理完成的文件
-- 🆕 **批量处理** - 支持从文件读取多个URL批量下载
-- 🆕 **配置文件** - 支持JSON配置文件，保存常用设置
-- 🆕 **进度条显示** - 批量处理时显示实时进度
-- 🆕 **依赖检查** - 自动检查必要工具是否安装
-- 🆕 **日志系统** - 完整的日志记录，支持文件和控制台输出
-- 🆕 **错误重试** - 智能重试机制，提高下载成功率
+- ✅ **批量处理** - 支持从文件读取多个URL批量下载
+- ✅ **配置文件** - 支持JSON配置文件，保存常用设置
+- ✅ **Docker 支持** - 提供完整的 Docker 和 Docker Compose 配置
+- ✅ **日志系统** - 完整的日志记录，支持文件和控制台输出
 
 ## 📦 安装
 
@@ -49,7 +39,7 @@ sudo apt update && sudo apt install ffmpeg
 
 ## 🚀 使用方法
 
-### 方式一：命令行工具（本地使用）
+### 方式一：命令行工具
 
 ```bash
 # 基本用法
@@ -68,9 +58,9 @@ python src/youtube_downloader.py URL --start 1:00 --end 2:00 --config config.jso
 
 **更多命令行选项请查看：** [docs/README.md](docs/README.md)
 
-### 方式二：HTTP API 服务（云端部署）
+### 方式二：本地 API 服务
 
-#### 本地运行 API 服务
+#### 直接运行
 
 ```bash
 # 启动服务
@@ -78,6 +68,37 @@ python app.py
 
 # 服务将在 http://localhost:8000 运行
 # 访问 http://localhost:8000/docs 查看 API 文档
+```
+
+#### 使用 Docker Compose（推荐）
+
+```bash
+# 启动服务
+docker-compose up -d youtube-dl-api
+
+# 查看日志
+docker-compose logs -f youtube-dl-api
+
+# 停止服务
+docker-compose down
+```
+
+服务启动后：
+- API 服务：http://localhost:8000
+- API 文档：http://localhost:8000/docs
+- 下载文件保存在 `./downloads` 目录
+
+#### Docker 环境配置
+
+在启动前，可以修改 `docker-compose.yaml` 中的环境变量：
+
+```yaml
+environment:
+  # 代理配置（如果需要）
+  HTTP_PROXY: "http://host.docker.internal:7890"
+  HTTPS_PROXY: "http://host.docker.internal:7890"
+  # 下载目录
+  DOWNLOADS_DIR: "/app/downloads"
 ```
 
 #### API 使用示例
@@ -109,67 +130,7 @@ curl -O "http://localhost:8000/tasks/TASK_ID/files/video"
 curl -O "http://localhost:8000/tasks/TASK_ID/files/audio"
 ```
 
-#### 测试 API
-
-```bash
-# 快速测试
-python test_api.py --quick
-
-# 完整测试（包含下载）
-python test_api.py
-
-# 测试远程服务
-python test_api.py --url https://your-app.up.railway.app
-```
-
 **更多 API 详情请查看：** [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
-
-## ☁️ 云端部署
-
-### 部署到 Railway.com
-
-Railway 是一个现代化的云平台，支持一键部署。
-
-#### 快速部署
-
-1. **Fork 本仓库到你的 GitHub**
-
-2. **访问 [Railway.com](https://railway.com/) 并登录**
-
-3. **创建新项目**
-   - 点击 "New Project"
-   - 选择 "Deploy from GitHub repo"
-   - 选择你 fork 的仓库
-
-4. **等待部署完成**
-   - Railway 会自动检测 Dockerfile
-   - 构建和部署大约需要 2-5 分钟
-
-5. **生成公开域名**
-   - 在服务设置中点击 "Generate Domain"
-   - 获得类似 `your-app.up.railway.app` 的域名
-
-6. **开始使用**
-   ```bash
-   # 访问 API 文档
-   https://your-app.up.railway.app/docs
-   
-   # 创建下载任务
-   curl -X POST "https://your-app.up.railway.app/download" \
-     -H "Content-Type: application/json" \
-     -d '{"url": "...", "start_time": "1:00", "end_time": "2:00"}'
-   ```
-
-**详细部署指南：** [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-
-### 其他部署选项
-
-本项目也可以部署到以下平台：
-- **Heroku** - 支持 Dockerfile
-- **Google Cloud Run** - 无服务器容器
-- **AWS ECS/Fargate** - 容器服务
-- **DigitalOcean App Platform** - 应用平台
-- **Render** - 类似 Railway 的平台
 
 ## 🧪 测试
 
@@ -200,7 +161,6 @@ pytest tests/ -v
 
 - [完整使用指南](docs/README.md) - 命令行工具详细说明
 - [API 参考文档](docs/API_REFERENCE.md) - HTTP API 完整文档
-- [Railway 部署指南](docs/DEPLOYMENT.md) - 云端部署教程
 - [Cookie 设置](docs/COOKIES_SETUP.md) - Chrome Cookie 配置
 - [项目结构](docs/PROJECT_STRUCTURE.md) - 代码结构说明
 
@@ -213,37 +173,47 @@ pytest tests/ -v
 ./ytdl "https://www.youtube.com/watch?v=..." --start 1:00 --end 2:00
 ```
 
-### 场景二：Web 应用集成
-将 API 部署到云端，在 Web 应用中集成视频下载功能。
-
-```javascript
-// 前端调用 API
-const response = await fetch('https://your-app.up.railway.app/download', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    url: videoUrl,
-    start_time: startTime,
-    end_time: endTime
-  })
-});
-const { task_id } = await response.json();
-```
-
-### 场景三：自动化工作流
-在自动化脚本中使用 API，批量处理视频。
+### 场景二：本地 API 服务
+使用 Docker 运行 API 服务，在本地应用中集成视频下载功能。
 
 ```python
 import requests
 
+# 创建下载任务
+response = requests.post(
+    'http://localhost:8000/download',
+    json={
+        'url': 'https://www.youtube.com/watch?v=...',
+        'start_time': '1:00',
+        'end_time': '2:00'
+    }
+)
+task_id = response.json()['task_id']
+print(f"任务创建: {task_id}")
+```
+
+### 场景三：批量自动化处理
+在自动化脚本中批量处理视频。
+
+```python
+import requests
+import time
+
 # 批量下载
 for video_url in video_urls:
     response = requests.post(
-        'https://your-app.up.railway.app/download',
+        'http://localhost:8000/download',
         json={'url': video_url, 'start_time': '0:00', 'end_time': '1:00'}
     )
     task_id = response.json()['task_id']
-    print(f"任务创建: {task_id}")
+    
+    # 等待任务完成
+    while True:
+        status = requests.get(f'http://localhost:8000/tasks/{task_id}').json()
+        if status['status'] == 'completed':
+            print(f"任务完成: {task_id}")
+            break
+        time.sleep(2)
 ```
 
 ## 🔧 配置
@@ -274,23 +244,27 @@ export HTTP_PROXY=http://127.0.0.1:7890
 export HTTPS_PROXY=http://127.0.0.1:7890
 ```
 
-## 📊 架构
+## 📊 项目结构
 
 ```
 youtube_download/
 ├── src/
-│   └── youtube_downloader.py  # 核心下载逻辑
-├── app.py                      # FastAPI HTTP 服务
-├── test_api.py                 # API 测试脚本
-├── Dockerfile                  # Docker 镜像配置
-├── railway.json                # Railway 部署配置
-├── requirements.txt            # Python 依赖
-├── config.json                 # 配置文件
-└── docs/                       # 文档目录
-    ├── README.md               # 使用指南
-    ├── API_REFERENCE.md        # API 文档
-    ├── DEPLOYMENT.md           # 部署指南
-    └── COOKIES_SETUP.md        # Cookie 设置
+│   ├── youtube_downloader.py      # 核心下载逻辑
+│   └── downloader/                # 下载器模块
+│       ├── video.py               # 视频下载
+│       ├── audio.py               # 音频提取
+│       ├── subtitle.py            # 字幕下载
+│       └── processor.py           # 任务处理
+├── app.py                         # FastAPI HTTP 服务
+├── test_api.py                    # API 测试脚本
+├── Dockerfile                     # Docker 镜像配置
+├── docker-compose.yaml            # Docker Compose 配置
+├── requirements.txt               # Python 依赖
+├── config.json                    # 配置文件
+└── docs/                          # 文档目录
+    ├── README.md                  # 使用指南
+    ├── API_REFERENCE.md           # API 文档
+    └── COOKIES_SETUP.md           # Cookie 设置
 ```
 
 ## ⚠️ 注意事项
@@ -303,22 +277,19 @@ youtube_download/
 2. **代理设置**
    - 某些地区可能需要代理访问 YouTube
    - 可通过参数、配置文件或环境变量设置
+   - Docker 环境中使用 `host.docker.internal` 访问宿主机代理
 
 3. **Cookie 要求**
    - YouTube 可能需要 Cookie 验证
    - 支持从 Chrome 浏览器导入 Cookie
+   - 将 Cookie 文件放在 `cookies/` 目录
 
 4. **存储空间**
-   - Railway 等平台使用临时文件系统
-   - 文件会在服务重启后丢失
-   - 建议及时下载完成的文件
+   - 下载文件默认保存在 `downloads/` 目录
+   - Docker 环境中通过卷挂载持久化存储
+   - 注意磁盘空间，定期清理旧文件
 
-5. **资源限制**
-   - 免费套餐有资源限制
-   - 建议下载较短的视频片段
-   - 注意并发任务数量
-
-6. **版权问题**
+5. **版权问题**
    - 请遵守 YouTube 使用条款
    - 仅用于个人学习和研究
    - 不要用于商业用途
@@ -336,16 +307,16 @@ MIT License - 请自由使用和修改
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) - YouTube 下载工具
 - [FFmpeg](https://ffmpeg.org/) - 视频处理工具
 - [FastAPI](https://fastapi.tiangolo.com/) - Web 框架
-- [Railway](https://railway.com/) - 部署平台
+- [Docker](https://www.docker.com/) - 容器化平台
 
 ## 📝 更新日志
 
 ### v2.0.0 (2025-10-07)
 - 🆕 添加 HTTP API 服务
-- 🆕 支持 Railway 一键部署
 - 🆕 异步任务处理
 - 🆕 文件下载接口
-- 📖 完善文档和部署指南
+- 🆕 Docker 和 Docker Compose 支持
+- 📖 完善文档和使用指南
 
 ### v1.2.0
 - 🆕 批量处理支持
