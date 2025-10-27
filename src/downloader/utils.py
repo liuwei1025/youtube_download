@@ -37,7 +37,8 @@ def extract_video_id(url):
     patterns = [
         r'(?:https?://)?(?:www\.)?youtube\.com/watch\?v=([\w-]+)',
         r'(?:https?://)?(?:www\.)?youtu\.be/([\w-]+)',
-        r'(?:https?://)?(?:www\.)?youtube\.com/embed/([\w-]+)'
+        r'(?:https?://)?(?:www\.)?youtube\.com/embed/([\w-]+)',
+        r'(?:https?://)?(?:www\.)?youtube\.com/shorts/([\w-]+)'
     ]
     for pattern in patterns:
         match = re.search(pattern, url)
@@ -139,8 +140,8 @@ def run_command(cmd, cwd=None, max_retries=3):
 
 
 def ensure_video_dir(base_dir, video_id):
-    # 确保使用绝对路径，基于当前脚本所在目录
-    script_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # 确保使用绝对路径，基于项目根目录（src的上一级）
+    script_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     abs_base_dir = os.path.join(script_dir, base_dir)
     video_dir = os.path.join(abs_base_dir, video_id)
     os.makedirs(video_dir, exist_ok=True)
