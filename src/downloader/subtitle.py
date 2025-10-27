@@ -143,6 +143,14 @@ def download_subtitles(config: DownloadConfig, video_dir: str, video_id: str, pr
             if matches:
                 safe_start = config.start_time.replace(':', '_')
                 safe_end = config.end_time.replace(':', '_')
+                
+                # 保存完整的原始字幕文件
+                full_subtitle_name = f"subtitles_full.{lang}.vtt"
+                full_subtitle_path = os.path.join(video_dir, full_subtitle_name)
+                shutil.copy(matches[0], full_subtitle_path)
+                logger.info(f"📄 保存完整字幕: {full_subtitle_name}")
+                
+                # 保存调整后的字幕文件
                 new_name = f"subtitles_{safe_start}-{safe_end}.{lang}.vtt"
                 new_path = os.path.join(video_dir, new_name)
                 shutil.move(matches[0], new_path)

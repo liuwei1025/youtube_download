@@ -11,6 +11,54 @@ from .utils import parse_time, check_disk_space, run_command, ensure_video_dir
 from .subtitle import download_subtitles
 
 
+def extract_audio_from_video(video_path: str, audio_path: str, audio_quality: str = '192K') -> bool:
+    """从视频文件中提取音频
+    
+    Args:
+        video_path: 视频文件路径
+        audio_path: 输出音频文件路径
+        audio_quality: 音频质量（比特率）
+        
+    Returns:
+        bool: 是否成功提取
+    """
+    logger = logging.getLogger(__name__)
+    
+    if not os.path.exists(video_path):
+        logger.error(f"视频文件不存在: {video_path}")
+        return False
+    
+    try:
+        logger.info(f"🎵 从视频中提取音频...")
+        
+        # 使用 ffmpeg 从视频中提取音频
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', video_path,
+            '-vn',  # 不包含视频
+            '-acodec', 'libmp3lame',
+            '-ar', '44100',
+            '-ab', audio_quality,
+            audio_path
+        ]
+        
+        success, output = run_command(cmd, max_retries=2)
+        if not success:
+            logger.error(f"音频提取失败: {output}")
+            return False
+        
+        if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
+            logger.info(f"✅ 音频提取完成: {os.path.basename(audio_path)}")
+            return True
+        else:
+            logger.error("音频提取后文件不存在或为空")
+            return False
+            
+    except Exception as e:
+        logger.error(f"提取音频时出错: {e}")
+        return False
+
+
 def download_and_cut_segment(config: DownloadConfig, output_path: str, content_type: str, proxy: str):
     """下载并切割视频/音频片段"""
     logger = logging.getLogger(__name__)
@@ -52,8 +100,13 @@ def download_and_cut_segment(config: DownloadConfig, output_path: str, content_t
             *format_opts,
             '-o', temp_path,
             '--no-playlist',
+            '--fixup', 'force',  # 强制修复下载的文件
             config.url
         ]
+        
+        # 为视频添加合并格式参数，确保输出为有效的 MP4
+        if content_type == 'video':
+            cmd.extend(['--merge-output-format', 'mp4'])
         
         if content_type == 'audio':
             cmd.extend(['--extract-audio', '--audio-format', 'mp3', '--audio-quality', config.audio_quality])
@@ -76,6 +129,16 @@ def download_and_cut_segment(config: DownloadConfig, output_path: str, content_t
                 logger.error("下载的文件不存在")
                 return None
         
+        # 验证下载的文件是否有效（仅针对视频）
+        if content_type == 'video':
+            logger.info(f"验证下载文件的有效性...")
+            verify_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type', temp_path]
+            verify_success, verify_output = run_command(verify_cmd, max_retries=1)
+            if not verify_success or 'video' not in verify_output.lower():
+                logger.error(f"下载的视频文件无效: {verify_output}")
+                return None
+            logger.info(f"✅ 文件验证通过")
+        
         # 使用ffmpeg切割
         logger.info(f"开始切割 {content_type} 片段: {start_str} - {end_str} (时长: {duration:.2f}秒)")
         if content_type == 'video':
@@ -86,10 +149,14 @@ def download_and_cut_segment(config: DownloadConfig, output_path: str, content_t
             # 注意：虽然重新编码较慢，但能确保视频从第一帧就是动态的
             ffmpeg_cmd = [
                 'ffmpeg', '-y',
+                # 增加分析参数以处理格式异常的视频
+                '-analyzeduration', '100M',
+                '-probesize', '100M',
                 '-ss', start_str,    # 输入seek：快速定位到开始时间
                 '-i', temp_path,
                 '-t', duration_str,  # 指定输出视频的持续时间
                 '-c:v', 'libx264',   # 重新编码以实现精确切割
+                '-pix_fmt', 'yuv420p',  # 明确指定像素格式
                 '-preset', 'fast',   # 使用快速预设平衡速度和质量
                 '-crf', '23',        # 恒定质量模式（23是默认值，质量较好）
                 '-c:a', 'aac',       # 音频也重新编码以保持同步
@@ -153,6 +220,19 @@ def download_segment(config: DownloadConfig, content_type: str, video_id: str, p
         if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
             logger.info(f"✅ 音频片段已存在，跳过下载: {filename}")
             return filepath
+        
+        # 优先从已下载的视频中提取音频，避免重复下载导致 403 错误
+        video_filename = f"segment_{safe_start}-{safe_end}.mp4"
+        video_filepath = os.path.join(video_dir, video_filename)
+        
+        if os.path.exists(video_filepath) and os.path.getsize(video_filepath) > 0:
+            logger.info("🎵 从已下载的视频中提取音频...")
+            if extract_audio_from_video(video_filepath, filepath, config.audio_quality):
+                return filepath
+            else:
+                logger.warning("从视频提取音频失败，尝试直接下载音频...")
+        
+        # 如果视频不存在或提取失败，则尝试直接下载音频
         logger.info("🎵 开始下载并处理音频片段...")
         result = download_and_cut_segment(config, filepath, 'audio', proxy)
         return result

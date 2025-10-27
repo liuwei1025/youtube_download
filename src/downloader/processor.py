@@ -102,22 +102,29 @@ def process_single_url(config: DownloadConfig) -> Optional[dict]:
     # 创建输出目录
     os.makedirs(config.output_dir, exist_ok=True)
     
-    # 准备下载任务
+    # 第一阶段：并行下载视频和字幕（避免并行下载视频+音频导致 403 错误）
     download_tasks = {}
     if config.download_video:
         download_tasks['video'] = ('video', video_id, proxy)
-    if config.download_audio:
-        download_tasks['audio'] = ('audio', video_id, proxy)
     if config.download_subtitles:
         download_tasks['subtitles'] = ('subtitles', video_id, proxy)
     
-    # 使用线程池并行下载
-    with ThreadPoolManager(max_workers=3) as pool:
-        futures = {
-            task_type: pool.executor.submit(download_segment, config, *task_args)
-            for task_type, task_args in download_tasks.items()
-        }
-        results = pool.wait_for_results(futures)
+    results = {}
+    
+    # 使用线程池并行下载视频和字幕
+    if download_tasks:
+        with ThreadPoolManager(max_workers=2) as pool:
+            futures = {
+                task_type: pool.executor.submit(download_segment, config, *task_args)
+                for task_type, task_args in download_tasks.items()
+            }
+            results = pool.wait_for_results(futures)
+    
+    # 第二阶段：下载/提取音频（在视频下载完成后，可以从视频中提取音频）
+    if config.download_audio:
+        logger.info("开始处理音频...")
+        audio_path = download_segment(config, 'audio', video_id, proxy)
+        results['audio'] = audio_path
     
     # 输出结果
     video_dir = os.path.join(config.output_dir, video_id)
