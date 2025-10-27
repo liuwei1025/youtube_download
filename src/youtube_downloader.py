@@ -6,6 +6,7 @@ YouTube下载器 - 改进版（含默认代理）
 按视频ID组织下载的文件
 """
 
+import os
 import sys
 import argparse
 
@@ -34,10 +35,11 @@ def main():
     parser.add_argument('--no-burn-subtitles', action='store_true', help='不烧录字幕到视频')
     parser.add_argument('--sub-langs', default='zh,en', help='字幕语言代码')
     parser.add_argument('--proxy', help='自定义代理地址，如 http://127.0.0.1:7890')
+    parser.add_argument('--cookies', help='Cookies 文件路径（Netscape 格式）')
     parser.add_argument('--batch', help='批量处理URL文件')
     parser.add_argument('--config', help='配置文件路径')
     parser.add_argument('--max-retries', type=int, default=3, help='最大重试次数')
-    parser.add_argument('--video-quality', default='best[height<=480]', help='视频质量')
+    parser.add_argument('--video-quality', default='bestvideo[height<=480]+bestaudio/best[height<=480]', help='视频质量')
     parser.add_argument('--audio-quality', default='192K', help='音频质量')
     
     args = parser.parse_args()
@@ -63,6 +65,17 @@ def main():
     
     logger.info("🎯 YouTube下载器启动")
     
+    # 确定 cookies 文件路径
+    cookies_file = args.cookies
+    if not cookies_file:
+        # 尝试使用默认路径
+        default_cookies = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cookies', 'Cookies')
+        if os.path.exists(default_cookies):
+            cookies_file = default_cookies
+            logger.info(f"使用默认 Cookies 文件: {cookies_file}")
+        else:
+            logger.warning("未找到 Cookies 文件，某些视频可能无法下载")
+    
     # 创建配置对象
     config = DownloadConfig(
         url=args.url or '',
@@ -77,7 +90,8 @@ def main():
         burn_subtitles=not args.no_burn_subtitles,
         max_retries=args.max_retries,
         video_quality=args.video_quality,
-        audio_quality=args.audio_quality
+        audio_quality=args.audio_quality,
+        cookies_file=cookies_file
     )
     
     try:

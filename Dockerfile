@@ -1,5 +1,5 @@
 # 使用多阶段构建减小镜像大小
-FROM python:3.9-slim as builder
+FROM python:3.11-slim as builder
 
 # 设置时区
 ENV TZ=Asia/Shanghai
@@ -16,7 +16,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # 最终镜像
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 # 设置时区
 ENV TZ=Asia/Shanghai
@@ -38,10 +38,12 @@ COPY . .
 
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1
+ENV COOKIES_FILE=/tmp/cookies_youtube
 
-# 创建下载目录并设置权限
-RUN mkdir -p /app/downloads && \
-    chmod 777 /app/downloads
+# 创建下载目录和 cookies 目录，并设置权限
+RUN mkdir -p /app/downloads /app/cookies && \
+    chmod 777 /app/downloads && \
+    chmod +x /app/entrypoint.sh
 
 # 使用非 root 用户运行
 RUN useradd -m -u 1000 youtube && \
@@ -49,4 +51,4 @@ RUN useradd -m -u 1000 youtube && \
 USER youtube
 
 # 启动应用
-CMD ["python", "app.py"]
+ENTRYPOINT ["/app/entrypoint.sh"]

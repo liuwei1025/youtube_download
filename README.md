@@ -1,18 +1,29 @@
-# YouTube 视频片段下载器
+# YouTube 视频片段下载器 v3.0
 
-一个功能完整的 YouTube 视频下载工具，支持时间段裁剪、音频提取、字幕下载和 HTTP API 服务。
+一个功能完整的 YouTube 视频下载工具，支持时间段裁剪、音频提取、字幕下载和 HTTP API 服务。**现已支持完整的任务管理系统和数据库持久化！**
 
 ## 🌟 主要特性
 
+### 核心功能
 - ✅ **精确时间段裁剪** - 使用两阶段下载策略，先下载完整视频再精确切割
 - ✅ **音频提取** - 自动提取音频并保存为MP3格式（可配置质量）
-- ✅ **字幕下载** - 支持多语言字幕下载（中/英/日等）
-- ✅ **HTTP API 服务** - 支持 RESTful API 调用，异步任务处理
+- ✅ **字幕下载与烧录** - 支持多语言字幕下载和烧录到视频（中/英/日等）
 - ✅ **HTTP代理支持** - 智能代理配置，支持环境变量和自定义设置
 - ✅ **批量处理** - 支持从文件读取多个URL批量下载
-- ✅ **配置文件** - 支持JSON配置文件，保存常用设置
-- ✅ **Docker 支持** - 提供完整的 Docker 和 Docker Compose 配置
-- ✅ **日志系统** - 完整的日志记录，支持文件和控制台输出
+
+### 🆕 任务管理系统 (v3.0)
+- 📊 **实时进度跟踪** - 实时查看任务进度和状态
+- 💾 **数据库持久化** - 使用 PostgreSQL 存储任务信息
+- 📁 **文件管理** - 自动记录和管理所有下载的文件
+- 📝 **日志系统** - 详细的任务执行日志
+- 📈 **统计分析** - 任务执行统计和分析
+- 🎯 **任务控制** - 取消、删除、查询任务
+- 🔄 **异步处理** - 所有任务异步执行，支持并发
+
+### 技术特性
+- ✅ **RESTful API** - 完整的 HTTP API 服务
+- ✅ **Docker 支持** - 完整的容器化部署方案
+- ✅ **配置灵活** - 支持多种配置方式
 
 ## 📦 安装
 
@@ -36,6 +47,25 @@ sudo apt update && sudo apt install ffmpeg
 # Windows
 # 从 https://ffmpeg.org/download.html 下载并添加到 PATH
 ```
+
+## ⚡ 快速开始
+
+### 🚀 一键启动（推荐）
+
+```bash
+# 1. 启动所有服务（API + 数据库）
+docker-compose up -d
+
+# 2. 验证服务
+curl http://localhost:8000/health
+
+# 3. 访问 API 文档
+open http://localhost:8000/docs
+```
+
+详细指南：📖 [快速启动指南](QUICKSTART.md)
+
+---
 
 ## 🚀 使用方法
 
@@ -101,7 +131,7 @@ environment:
   DOWNLOADS_DIR: "/app/downloads"
 ```
 
-#### API 使用示例
+#### 🆕 任务管理 API 示例
 
 ```bash
 # 1. 创建下载任务
@@ -111,26 +141,46 @@ curl -X POST "http://localhost:8000/download" \
     "url": "https://www.youtube.com/watch?v=VIDEO_ID",
     "start_time": "1:00",
     "end_time": "2:00",
-    "download_video": true,
-    "download_audio": true
+    "subtitle_langs": "zh,en"
   }'
 
 # 响应示例：
 # {
-#   "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+#   "task_id": "550e8400-e29b-41d4-a716-446655440000",
 #   "status": "pending",
-#   "message": "任务已创建，正在处理中"
+#   "message": "任务已创建，正在处理中",
+#   "created_at": "2025-10-27T10:30:00+08:00"
 # }
 
-# 2. 查询任务状态
+# 2. 查看任务进度（实时）
 curl "http://localhost:8000/tasks/TASK_ID"
+# 返回详细的进度信息：progress_percentage, current_step, files 等
 
-# 3. 下载完成的文件
+# 3. 查看任务列表
+curl "http://localhost:8000/tasks?status=processing&limit=10"
+
+# 4. 查看任务日志
+curl "http://localhost:8000/tasks/TASK_ID/logs"
+
+# 5. 下载文件
 curl -O "http://localhost:8000/tasks/TASK_ID/files/video"
 curl -O "http://localhost:8000/tasks/TASK_ID/files/audio"
+curl -O "http://localhost:8000/tasks/TASK_ID/files/subtitles"
+
+# 6. 取消任务
+curl -X POST "http://localhost:8000/tasks/TASK_ID/cancel"
+
+# 7. 删除任务
+curl -X DELETE "http://localhost:8000/tasks/TASK_ID"
+
+# 8. 查看统计
+curl "http://localhost:8000/stats"
 ```
 
-**更多 API 详情请查看：** [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
+**详细文档：**
+- 📖 [任务管理系统文档](docs/TASK_MANAGEMENT.md) - 完整功能说明
+- 📖 [API 参考文档](docs/API_REFERENCE.md) - API 详细说明
+- 📊 [系统架构文档](docs/SYSTEM_OVERVIEW.md) - 架构和技术细节
 
 ## 🧪 测试
 
@@ -159,6 +209,12 @@ pytest tests/ -v
 
 ## 📖 文档
 
+### 快速入门
+- 📘 **[快速启动指南](QUICKSTART.md)** - 30秒上手
+- 📗 **[任务管理系统](docs/TASK_MANAGEMENT.md)** - 完整功能文档
+- 📙 **[系统架构](docs/SYSTEM_OVERVIEW.md)** - 技术架构说明
+
+### 详细文档
 - [完整使用指南](docs/README.md) - 命令行工具详细说明
 - [API 参考文档](docs/API_REFERENCE.md) - HTTP API 完整文档
 - [Cookie 设置](docs/COOKIES_SETUP.md) - Chrome Cookie 配置
@@ -247,24 +303,31 @@ export HTTPS_PROXY=http://127.0.0.1:7890
 ## 📊 项目结构
 
 ```
-youtube_download/
+youtube/
 ├── src/
 │   ├── youtube_downloader.py      # 核心下载逻辑
+│   ├── database.py                # 🆕 数据库连接管理
+│   ├── models.py                  # 🆕 数据模型定义
+│   ├── task_service.py            # 🆕 任务管理服务
 │   └── downloader/                # 下载器模块
 │       ├── video.py               # 视频下载
 │       ├── audio.py               # 音频提取
 │       ├── subtitle.py            # 字幕下载
 │       └── processor.py           # 任务处理
 ├── app.py                         # FastAPI HTTP 服务
-├── test_api.py                    # API 测试脚本
+├── init_db.sql                    # 🆕 数据库初始化脚本
+├── docker-compose.yaml            # Docker Compose 配置（含数据库）
 ├── Dockerfile                     # Docker 镜像配置
-├── docker-compose.yaml            # Docker Compose 配置
 ├── requirements.txt               # Python 依赖
-├── config.json                    # 配置文件
+├── QUICKSTART.md                  # 🆕 快速启动指南
+├── scripts/                       # 🆕 工具脚本
+│   ├── check_db.sh               # 数据库健康检查
+│   └── test_api.sh               # API 功能测试
 └── docs/                          # 文档目录
-    ├── README.md                  # 使用指南
+    ├── TASK_MANAGEMENT.md         # 🆕 任务管理文档
+    ├── SYSTEM_OVERVIEW.md         # 🆕 系统架构文档
     ├── API_REFERENCE.md           # API 文档
-    └── COOKIES_SETUP.md           # Cookie 设置
+    └── README.md                  # 使用指南
 ```
 
 ## ⚠️ 注意事项
@@ -310,6 +373,19 @@ MIT License - 请自由使用和修改
 - [Docker](https://www.docker.com/) - 容器化平台
 
 ## 📝 更新日志
+
+### 🎉 v3.0.0 (2025-10-27) - 任务管理系统
+- ✨ **新增完整的任务管理系统**
+- ✨ **集成 PostgreSQL 数据库持久化**
+- ✨ **实时任务进度跟踪**
+- ✨ **任务日志系统**
+- ✨ **文件管理和下载功能**
+- ✨ **任务统计和分析**
+- ✨ **任务控制（取消、删除）**
+- 🔧 **重构 API 架构**
+- 🔧 **改进错误处理和日志**
+- 📚 **完善文档和示例**
+- 🛠️ **新增工具脚本**
 
 ### v2.0.0 (2025-10-07)
 - 🆕 添加 HTTP API 服务

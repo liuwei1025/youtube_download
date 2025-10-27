@@ -79,7 +79,9 @@ def download_and_cut_segment(config: DownloadConfig, output_path: str, content_t
     duration_str = str(duration)
     
     temp_dir = os.path.dirname(output_path)
-    temp_path = os.path.join(temp_dir, f"temp_{os.path.basename(output_path)}")
+    # 移除扩展名，让 yt-dlp 自动处理（它会在下载分离流时添加后缀，然后合并）
+    output_base = os.path.splitext(os.path.basename(output_path))[0]
+    temp_path = os.path.join(temp_dir, f"temp_{output_base}.%(ext)s")
     
     try:
         # 检查磁盘空间
@@ -92,19 +94,33 @@ def download_and_cut_segment(config: DownloadConfig, output_path: str, content_t
         else:
             format_opts = ['-f', 'bestaudio/best']
             
-        # 构建下载命令
+        # 构建下载命令基础部分
         cmd = [
             'yt-dlp',
-            '--proxy', proxy,
-            '--cookies-from-browser', 'chrome',
-            *format_opts,
+            '--proxy', proxy
+        ]
+        
+        # 添加 cookies 参数
+        if config.cookies_file and os.path.exists(config.cookies_file):
+            cmd.extend([
+                '--cookies', config.cookies_file,
+                '--no-cache-dir'  # 禁止缓存，避免尝试写入 cookies 文件
+            ])
+            logger.debug(f"使用 cookies 文件: {config.cookies_file}")
+        else:
+            logger.warning("未配置 cookies 文件或文件不存在，可能会导致下载失败")
+        
+        # 添加其他参数
+        cmd.extend(format_opts)
+        cmd.extend([
             '-o', temp_path,
             '--no-playlist',
             '--fixup', 'force',  # 强制修复下载的文件
             config.url
-        ]
+        ])
         
         # 为视频添加合并格式参数，确保输出为有效的 MP4
+        # yt-dlp 会自动下载分离的视频和音频流，然后用 ffmpeg 合并
         if content_type == 'video':
             cmd.extend(['--merge-output-format', 'mp4'])
         
@@ -117,17 +133,21 @@ def download_and_cut_segment(config: DownloadConfig, output_path: str, content_t
             logger.error(f"下载失败: {output}")
             return None
             
-        # 检查下载的文件是否存在
-        if not os.path.exists(temp_path):
-            # 尝试查找实际下载的文件
-            base_name = os.path.splitext(temp_path)[0]
-            possible_files = glob.glob(f"{base_name}.*")
-            if possible_files:
-                temp_path = possible_files[0]
-                logger.info(f"找到下载文件: {temp_path}")
-            else:
-                logger.error("下载的文件不存在")
-                return None
+        # 查找下载的文件（因为使用了 %(ext)s 模板，需要查找实际文件）
+        # 将模板路径转换为搜索模式
+        search_pattern = temp_path.replace('.%(ext)s', '.*')
+        possible_files = glob.glob(search_pattern)
+        
+        # 过滤掉临时文件（.part, .ytdl等）
+        valid_files = [f for f in possible_files if not any(f.endswith(ext) for ext in ['.part', '.ytdl', '.temp'])]
+        
+        if valid_files:
+            # 如果有多个文件，选择最大的（通常是合并后的文件）
+            temp_path = max(valid_files, key=os.path.getsize)
+            logger.info(f"找到下载文件: {os.path.basename(temp_path)}")
+        else:
+            logger.error(f"下载的文件不存在，搜索模式: {search_pattern}")
+            return None
         
         # 验证下载的文件是否有效（仅针对视频）
         if content_type == 'video':
@@ -142,6 +162,16 @@ def download_and_cut_segment(config: DownloadConfig, output_path: str, content_t
         # 使用ffmpeg切割
         logger.info(f"开始切割 {content_type} 片段: {start_str} - {end_str} (时长: {duration:.2f}秒)")
         if content_type == 'video':
+            # 检查视频是否有音频流
+            has_audio = False
+            check_audio_cmd = ['ffprobe', '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_type', '-of', 'default=noprint_wrappers=1', temp_path]
+            audio_check_success, audio_check_output = run_command(check_audio_cmd, max_retries=1)
+            if audio_check_success and 'audio' in audio_check_output.lower():
+                has_audio = True
+                logger.info("✅ 视频包含音频流")
+            else:
+                logger.warning("⚠️ 视频不包含音频流，将只处理视频")
+            
             # 使用两阶段切割策略实现精确切割：
             # 1. -ss 放在 -i 之前：快速定位到目标时间附近（可能不精确）
             # 2. 使用 -t 指定持续时间：确保切割的视频长度正确
@@ -159,10 +189,20 @@ def download_and_cut_segment(config: DownloadConfig, output_path: str, content_t
                 '-pix_fmt', 'yuv420p',  # 明确指定像素格式
                 '-preset', 'fast',   # 使用快速预设平衡速度和质量
                 '-crf', '23',        # 恒定质量模式（23是默认值，质量较好）
-                '-c:a', 'aac',       # 音频也重新编码以保持同步
-                '-b:a', '128k',      # 音频比特率
-                output_path
             ]
+            
+            # 根据是否有音频流添加音频处理参数
+            if has_audio:
+                ffmpeg_cmd.extend([
+                    '-c:a', 'aac',       # 音频也重新编码以保持同步
+                    '-b:a', '128k',      # 音频比特率
+                ])
+            else:
+                ffmpeg_cmd.extend([
+                    '-an',  # 不包含音频
+                ])
+            
+            ffmpeg_cmd.append(output_path)
         else:
             ffmpeg_cmd = [
                 'ffmpeg', '-y',

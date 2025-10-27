@@ -21,8 +21,9 @@ class DownloadConfig:
     download_subtitles: bool = True
     burn_subtitles: bool = True
     max_retries: int = 3
-    video_quality: str = 'best[height<=480]'
+    video_quality: str = 'bestvideo[height<=480]+bestaudio/best[height<=480]'
     audio_quality: str = '192K'
+    cookies_file: Optional[str] = None
 
 
 def load_config_file(config_path: str) -> dict:

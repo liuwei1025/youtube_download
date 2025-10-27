@@ -2,21 +2,20 @@
 """
 YouTube下载器 HTTP API 服务
 使用 FastAPI 提供 RESTful API
+支持数据库持久化存储任务
 """
 
 import os
 import sys
-import uuid
-import json
 import asyncio
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Optional, List
 from pathlib import Path
 import shutil
+import traceback
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
 
 # 导入原有的下载功能
@@ -28,11 +27,25 @@ from downloader import (
 )
 from downloader.utils import check_dependencies, extract_video_id
 
-# 全局变量
-tasks_db: Dict[str, dict] = {}
+# 导入数据库和模型
+from src.database import db
+from src.models import (
+    DownloadRequest,
+    TaskResponse,
+    TaskDetail,
+    TaskList,
+    TaskStatus,
+    TaskStats,
+    TaskLog,
+)
+from src.task_service import TaskService
+
 # 默认保存在项目根目录的 downloads 文件夹
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOADS_DIR = os.environ.get('DOWNLOADS_DIR', os.path.join(BASE_DIR, 'downloads'))
+
+# Cookies 文件路径配置（优先使用环境变量，否则使用默认路径）
+COOKIES_FILE = os.environ.get('COOKIES_FILE', os.path.join(BASE_DIR, 'cookies', 'Cookies'))
 
 # 确保下载目录存在
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
@@ -41,47 +54,18 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 logger = setup_logging()
 
 
-class DownloadRequest(BaseModel):
-    """下载请求模型"""
-    url: str = Field(..., description="YouTube视频URL")
-    start_time: str = Field(..., description="开始时间 (HH:MM:SS, MM:SS 或秒数)")
-    end_time: str = Field(..., description="结束时间 (HH:MM:SS, MM:SS 或秒数)")
-    proxy: Optional[str] = Field(None, description="代理服务器地址")
-    subtitle_langs: str = Field("zh,en", description="字幕语言代码，逗号分隔")
-    download_video: bool = Field(True, description="是否下载视频")
-    download_audio: bool = Field(True, description="是否下载音频")
-    download_subtitles: bool = Field(True, description="是否下载字幕")
-    video_quality: str = Field("best[height<=480]", description="视频质量")
-    audio_quality: str = Field("192K", description="音频质量")
-    max_retries: int = Field(3, description="最大重试次数")
-
-
-class TaskResponse(BaseModel):
-    """任务响应模型"""
-    task_id: str
-    status: str
-    message: str
-    created_at: str
-
-
-class TaskStatus(BaseModel):
-    """任务状态模型"""
-    task_id: str
-    status: str  # pending, processing, completed, failed
-    url: str
-    video_id: Optional[str] = None
-    created_at: str
-    completed_at: Optional[str] = None
-    error: Optional[str] = None
-    files: Optional[Dict[str, str]] = None
-    progress: Optional[str] = None
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    # 启动时检查依赖
+    # 启动时初始化数据库连接
     logger.info("🚀 启动 YouTube 下载器 API 服务...")
+    try:
+        await db.connect()
+        logger.info("✅ 数据库连接成功")
+    except Exception as e:
+        logger.error(f"❌ 数据库连接失败: {e}")
+        raise
+    
     if not check_dependencies():
         logger.error("❌ 依赖检查失败，但服务将继续运行")
     else:
@@ -91,82 +75,131 @@ async def lifespan(app: FastAPI):
     
     # 关闭时清理
     logger.info("🛑 关闭服务...")
-    cleanup_old_tasks()
+    await db.disconnect()
 
 
 app = FastAPI(
     title="YouTube下载器 API",
-    description="支持时间段裁剪、音频提取、字幕下载的 YouTube 下载服务",
-    version="2.0.0",
+    description="支持时间段裁剪、音频提取、字幕下载的 YouTube 下载服务 (数据库版)",
+    version="3.0.0",
     lifespan=lifespan
 )
-
-
-def cleanup_old_tasks(max_age_hours: int = 24):
-    """清理旧任务和文件"""
-    logger.info("开始清理旧任务...")
-    current_time = datetime.now()
-    tasks_to_remove = []
-    
-    for task_id, task in tasks_db.items():
-        created_at = datetime.fromisoformat(task['created_at'])
-        age_hours = (current_time - created_at).total_seconds() / 3600
-        
-        if age_hours > max_age_hours:
-            # 删除相关文件
-            if task.get('video_id'):
-                video_dir = os.path.join(DOWNLOADS_DIR, task['video_id'])
-                if os.path.exists(video_dir):
-                    shutil.rmtree(video_dir)
-                    logger.info(f"删除旧任务文件: {video_dir}")
-            tasks_to_remove.append(task_id)
-    
-    for task_id in tasks_to_remove:
-        del tasks_db[task_id]
-        logger.info(f"删除旧任务: {task_id}")
-    
-    logger.info(f"清理完成，删除了 {len(tasks_to_remove)} 个旧任务")
 
 
 async def process_download_task(task_id: str, config: DownloadConfig):
     """异步处理下载任务"""
     try:
-        tasks_db[task_id]['status'] = 'processing'
-        tasks_db[task_id]['progress'] = '开始下载...'
+        # 更新状态为处理中
+        await TaskService.update_task_status(
+            task_id,
+            TaskStatus.PROCESSING,
+            progress='开始下载...',
+            progress_percentage=10,
+            current_step='初始化'
+        )
+        await TaskService.add_task_log(task_id, 'INFO', f'开始处理任务: {config.url}')
         logger.info(f"开始处理任务 {task_id}: {config.url}")
         
         # 提取视频ID
         video_id = extract_video_id(config.url)
         if video_id:
-            tasks_db[task_id]['video_id'] = video_id
+            await TaskService.update_task_status(
+                task_id,
+                TaskStatus.PROCESSING,
+                video_id=video_id,
+                progress='已提取视频ID',
+                progress_percentage=20
+            )
+            await TaskService.add_task_log(task_id, 'INFO', f'视频ID: {video_id}')
+        
+        # 更新进度
+        await TaskService.update_task_status(
+            task_id,
+            TaskStatus.PROCESSING,
+            progress='正在下载视频...',
+            progress_percentage=30,
+            current_step='下载中'
+        )
         
         # 执行下载（在线程池中运行阻塞操作）
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, process_single_url, config)
         
         if result:
-            tasks_db[task_id]['status'] = 'completed'
-            tasks_db[task_id]['completed_at'] = datetime.now().isoformat()
-            tasks_db[task_id]['progress'] = '下载完成'
+            # 下载成功，保存文件信息
+            await TaskService.update_task_status(
+                task_id,
+                TaskStatus.PROCESSING,
+                progress='正在保存文件信息...',
+                progress_percentage=90,
+                current_step='保存文件'
+            )
             
-            # 记录文件路径
-            files = {}
             for content_type, file_path in result.items():
                 if file_path and os.path.exists(file_path):
-                    files[content_type] = os.path.basename(file_path)
+                    file_name = os.path.basename(file_path)
+                    file_size = os.path.getsize(file_path)
+                    
+                    # 确定MIME类型
+                    mime_type = 'application/octet-stream'
+                    if content_type == 'video' or content_type == 'video_with_subs':
+                        mime_type = 'video/mp4'
+                    elif content_type == 'audio':
+                        mime_type = 'audio/mpeg'
+                    elif content_type == 'subtitles':
+                        mime_type = 'text/vtt'
+                    
+                    await TaskService.add_task_file(
+                        task_id,
+                        content_type,
+                        file_name,
+                        file_path,
+                        file_size,
+                        mime_type
+                    )
+                    await TaskService.add_task_log(
+                        task_id,
+                        'INFO',
+                        f'已保存文件: {content_type} - {file_name}'
+                    )
             
-            tasks_db[task_id]['files'] = files
-            logger.info(f"任务 {task_id} 完成: {files}")
+            # 更新为完成状态
+            await TaskService.update_task_status(
+                task_id,
+                TaskStatus.COMPLETED,
+                progress='下载完成',
+                progress_percentage=100,
+                current_step='完成'
+            )
+            await TaskService.add_task_log(task_id, 'INFO', '任务完成')
+            logger.info(f"任务 {task_id} 完成")
         else:
-            tasks_db[task_id]['status'] = 'failed'
-            tasks_db[task_id]['error'] = '下载失败，请检查日志'
-            tasks_db[task_id]['completed_at'] = datetime.now().isoformat()
+            # 下载失败
+            error_msg = '下载失败，请检查日志'
+            await TaskService.update_task_status(
+                task_id,
+                TaskStatus.FAILED,
+                progress='下载失败',
+                progress_percentage=0,
+                error_message=error_msg
+            )
+            await TaskService.add_task_log(task_id, 'ERROR', error_msg)
             logger.error(f"任务 {task_id} 失败")
             
     except Exception as e:
-        tasks_db[task_id]['status'] = 'failed'
-        tasks_db[task_id]['error'] = str(e)
-        tasks_db[task_id]['completed_at'] = datetime.now().isoformat()
+        # 捕获异常
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        
+        await TaskService.update_task_status(
+            task_id,
+            TaskStatus.FAILED,
+            progress='任务异常',
+            progress_percentage=0,
+            error_message=error_msg,
+            error_trace=error_trace
+        )
+        await TaskService.add_task_log(task_id, 'ERROR', f'任务异常: {error_msg}')
         logger.error(f"任务 {task_id} 异常: {e}", exc_info=True)
 
 
@@ -174,15 +207,18 @@ async def process_download_task(task_id: str, config: DownloadConfig):
 async def root():
     """根路径 - API 信息"""
     return {
-        "service": "YouTube下载器 API",
-        "version": "2.0.0",
+        "service": "YouTube下载器 API (数据库版)",
+        "version": "3.0.0",
         "status": "running",
         "endpoints": {
             "docs": "/docs",
             "health": "/health",
             "download": "/download",
             "tasks": "/tasks",
-            "task_status": "/tasks/{task_id}"
+            "task_status": "/tasks/{task_id}",
+            "task_files": "/tasks/{task_id}/files",
+            "task_logs": "/tasks/{task_id}/logs",
+            "task_stats": "/stats"
         }
     }
 
@@ -190,10 +226,20 @@ async def root():
 @app.get("/health")
 async def health_check():
     """健康检查端点"""
+    try:
+        # 测试数据库连接
+        stats = await TaskService.get_task_stats()
+        db_status = "connected"
+    except Exception as e:
+        logger.error(f"数据库健康检查失败: {e}")
+        db_status = "disconnected"
+        stats = None
+    
     return {
-        "status": "healthy",
+        "status": "healthy" if db_status == "connected" else "degraded",
         "timestamp": datetime.now().isoformat(),
-        "tasks_count": len(tasks_db),
+        "database": db_status,
+        "tasks_stats": stats.dict() if stats else None,
         "downloads_dir": DOWNLOADS_DIR
     }
 
@@ -212,8 +258,21 @@ async def create_download_task(
     - 其他可选参数见模型定义
     """
     try:
-        # 生成任务ID
-        task_id = str(uuid.uuid4())
+        # 创建任务记录
+        task_id = await TaskService.create_task(
+            url=request.url,
+            start_time=request.start_time,
+            end_time=request.end_time,
+            proxy=request.proxy,
+            subtitle_langs=request.subtitle_langs,
+            download_video=request.download_video,
+            download_audio=request.download_audio,
+            download_subtitles=request.download_subtitles,
+            burn_subtitles=request.burn_subtitles,
+            video_quality=request.video_quality,
+            audio_quality=request.audio_quality,
+            max_retries=request.max_retries
+        )
         
         # 创建下载配置
         config = DownloadConfig(
@@ -226,30 +285,28 @@ async def create_download_task(
             download_video=request.download_video,
             download_audio=request.download_audio,
             download_subtitles=request.download_subtitles,
+            burn_subtitles=request.burn_subtitles,
             max_retries=request.max_retries,
             video_quality=request.video_quality,
-            audio_quality=request.audio_quality
+            audio_quality=request.audio_quality,
+            cookies_file=COOKIES_FILE if os.path.exists(COOKIES_FILE) else None
         )
-        
-        # 初始化任务状态
-        tasks_db[task_id] = {
-            'task_id': task_id,
-            'status': 'pending',
-            'url': request.url,
-            'created_at': datetime.now().isoformat(),
-            'config': request.dict()
-        }
         
         # 添加后台任务
         background_tasks.add_task(process_download_task, task_id, config)
         
+        # 记录日志
+        await TaskService.add_task_log(task_id, 'INFO', f'任务已创建: {request.url}')
         logger.info(f"创建下载任务: {task_id} for {request.url}")
+        
+        # 获取任务信息
+        task = await TaskService.get_task(task_id)
         
         return TaskResponse(
             task_id=task_id,
-            status="pending",
+            status=TaskStatus.PENDING,
             message="任务已创建，正在处理中",
-            created_at=tasks_db[task_id]['created_at']
+            created_at=task.created_at
         )
         
     except Exception as e:
@@ -257,34 +314,75 @@ async def create_download_task(
         raise HTTPException(status_code=500, detail=f"创建任务失败: {str(e)}")
 
 
-@app.get("/tasks", response_model=List[TaskStatus])
+@app.get("/tasks", response_model=List[TaskList])
 async def list_tasks(
-    status: Optional[str] = Query(None, description="过滤状态: pending, processing, completed, failed"),
-    limit: int = Query(50, description="返回数量限制", ge=1, le=100)
+    status: Optional[str] = Query(None, description="过滤状态: pending, processing, completed, failed, cancelled"),
+    limit: int = Query(50, description="返回数量限制", ge=1, le=100),
+    offset: int = Query(0, description="偏移量", ge=0)
 ):
     """获取任务列表"""
-    tasks = list(tasks_db.values())
-    
-    # 过滤状态
-    if status:
-        tasks = [t for t in tasks if t['status'] == status]
-    
-    # 按创建时间倒序
-    tasks = sorted(tasks, key=lambda x: x['created_at'], reverse=True)
-    
-    # 限制数量
-    tasks = tasks[:limit]
-    
-    return [TaskStatus(**task) for task in tasks]
+    try:
+        tasks = await TaskService.list_tasks(status=status, limit=limit, offset=offset)
+        return tasks
+    except Exception as e:
+        logger.error(f"获取任务列表失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取任务列表失败: {str(e)}")
 
 
-@app.get("/tasks/{task_id}", response_model=TaskStatus)
+@app.get("/tasks/{task_id}", response_model=TaskDetail)
 async def get_task_status(task_id: str):
-    """获取任务状态"""
-    if task_id not in tasks_db:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    
-    return TaskStatus(**tasks_db[task_id])
+    """获取任务详情"""
+    try:
+        task = await TaskService.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        return task
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取任务详情失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取任务详情失败: {str(e)}")
+
+
+@app.get("/tasks/{task_id}/logs", response_model=List[TaskLog])
+async def get_task_logs(
+    task_id: str,
+    limit: int = Query(100, description="返回数量限制", ge=1, le=1000)
+):
+    """获取任务日志"""
+    try:
+        # 先检查任务是否存在
+        task = await TaskService.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        
+        logs = await TaskService.get_task_logs(task_id, limit=limit)
+        return logs
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取任务日志失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取任务日志失败: {str(e)}")
+
+
+@app.get("/tasks/{task_id}/files")
+async def get_task_files(task_id: str):
+    """获取任务的所有文件列表"""
+    try:
+        task = await TaskService.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        
+        return {
+            "task_id": task_id,
+            "status": task.status,
+            "files": [f.dict() for f in task.files]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取任务文件列表失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取任务文件列表失败: {str(e)}")
 
 
 @app.get("/tasks/{task_id}/files/{file_type}")
@@ -292,67 +390,117 @@ async def download_file(task_id: str, file_type: str):
     """
     下载任务生成的文件
     
-    - **file_type**: video, audio, subtitles
+    - **file_type**: video, audio, subtitles, video_with_subs
     """
-    if task_id not in tasks_db:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    
-    task = tasks_db[task_id]
-    
-    if task['status'] != 'completed':
-        raise HTTPException(status_code=400, detail="任务未完成")
-    
-    if not task.get('files') or file_type not in task['files']:
-        raise HTTPException(status_code=404, detail=f"文件类型 {file_type} 不存在")
-    
-    # 构建文件路径
-    video_id = task.get('video_id')
-    if not video_id:
-        raise HTTPException(status_code=500, detail="视频ID缺失")
-    
-    file_name = task['files'][file_type]
-    file_path = os.path.join(DOWNLOADS_DIR, video_id, file_name)
-    
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="文件不存在")
-    
-    return FileResponse(
-        path=file_path,
-        filename=file_name,
-        media_type='application/octet-stream'
-    )
+    try:
+        task = await TaskService.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        
+        if task.status != TaskStatus.COMPLETED:
+            raise HTTPException(status_code=400, detail="任务未完成")
+        
+        # 查找对应类型的文件
+        target_file = None
+        for f in task.files:
+            if f.file_type == file_type:
+                target_file = f
+                break
+        
+        if not target_file:
+            raise HTTPException(status_code=404, detail=f"文件类型 {file_type} 不存在")
+        
+        file_path = target_file.file_path
+        
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="文件不存在")
+        
+        return FileResponse(
+            path=file_path,
+            filename=target_file.file_name,
+            media_type=target_file.mime_type or 'application/octet-stream'
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"下载文件失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"下载文件失败: {str(e)}")
 
 
 @app.delete("/tasks/{task_id}")
-async def delete_task(task_id: str):
+async def delete_task(task_id: str, delete_files: bool = Query(True, description="是否删除相关文件")):
     """删除任务及其文件"""
-    if task_id not in tasks_db:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    
-    task = tasks_db[task_id]
-    
-    # 删除文件
-    if task.get('video_id'):
-        video_dir = os.path.join(DOWNLOADS_DIR, task['video_id'])
-        if os.path.exists(video_dir):
-            shutil.rmtree(video_dir)
-            logger.info(f"删除任务文件: {video_dir}")
-    
-    # 删除任务记录
-    del tasks_db[task_id]
-    logger.info(f"删除任务: {task_id}")
-    
-    return {"message": "任务已删除", "task_id": task_id}
+    try:
+        task = await TaskService.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        
+        # 删除文件
+        if delete_files and task.video_id:
+            video_dir = os.path.join(DOWNLOADS_DIR, task.video_id)
+            if os.path.exists(video_dir):
+                shutil.rmtree(video_dir)
+                logger.info(f"删除任务文件: {video_dir}")
+        
+        # 删除数据库记录
+        await TaskService.delete_task(task_id)
+        logger.info(f"删除任务: {task_id}")
+        
+        return {"message": "任务已删除", "task_id": task_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除任务失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"删除任务失败: {str(e)}")
+
+
+@app.post("/tasks/{task_id}/cancel")
+async def cancel_task(task_id: str):
+    """取消任务"""
+    try:
+        task = await TaskService.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        
+        if task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+            raise HTTPException(status_code=400, detail="任务已结束，无法取消")
+        
+        await TaskService.cancel_task(task_id)
+        await TaskService.add_task_log(task_id, 'INFO', '任务已被用户取消')
+        logger.info(f"取消任务: {task_id}")
+        
+        return {"message": "任务已取消", "task_id": task_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"取消任务失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"取消任务失败: {str(e)}")
+
+
+@app.get("/stats", response_model=TaskStats)
+async def get_stats():
+    """获取任务统计信息"""
+    try:
+        stats = await TaskService.get_task_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"获取统计信息失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取统计信息失败: {str(e)}")
 
 
 @app.post("/cleanup")
 async def cleanup_tasks(max_age_hours: int = Query(24, description="清理多少小时前的任务")):
     """手动清理旧任务"""
-    cleanup_old_tasks(max_age_hours)
-    return {
-        "message": f"已清理 {max_age_hours} 小时前的旧任务",
-        "current_tasks": len(tasks_db)
-    }
+    try:
+        deleted_count = await TaskService.cleanup_old_tasks(hours=max_age_hours)
+        
+        return {
+            "message": f"已清理 {max_age_hours} 小时前的旧任务",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        logger.error(f"清理任务失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"清理任务失败: {str(e)}")
 
 
 if __name__ == "__main__":

@@ -114,17 +114,31 @@ def download_subtitles(config: DownloadConfig, video_dir: str, video_id: str, pr
     os.makedirs(temp_dir, exist_ok=True)
     
     try:
+        # 构建下载命令
         cmd = [
             'yt-dlp',
-            '--proxy', proxy,
-            '--cookies-from-browser', 'chrome',
+            '--proxy', proxy
+        ]
+        
+        # 添加 cookies 参数
+        if config.cookies_file and os.path.exists(config.cookies_file):
+            cmd.extend([
+                '--cookies', config.cookies_file,
+                '--no-cache-dir'  # 禁止缓存，避免尝试写入 cookies 文件
+            ])
+            logger.debug(f"使用 cookies 文件: {config.cookies_file}")
+        else:
+            logger.warning("未配置 cookies 文件或文件不存在，可能会导致下载失败")
+        
+        # 添加其他参数
+        cmd.extend([
             '--write-auto-sub',
             '--sub-lang', config.subtitle_langs,
             '--skip-download',
-            '-o', os.path.join(temp_dir, 'subs'),
+            '-o', os.path.join(temp_dir, 'subs.%(ext)s'),
             '--no-playlist',
             config.url
-        ]
+        ])
         
         success, output = run_command(cmd, max_retries=config.max_retries)
         if not success:

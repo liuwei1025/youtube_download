@@ -37,7 +37,7 @@ class YouTubeDownloaderClient:
         download_video: bool = True,
         download_audio: bool = True,
         download_subtitles: bool = False,
-        video_quality: str = "best[height<=480]",
+        video_quality: str = "bestvideo[height<=480]+bestaudio/best[height<=480]",
         audio_quality: str = "192K"
     ) -> Dict:
         """
@@ -235,7 +235,7 @@ def main():
     parser.add_argument("--no-video", action="store_true", help="不下载视频")
     parser.add_argument("--no-audio", action="store_true", help="不下载音频")
     parser.add_argument("--subtitles", action="store_true", help="下载字幕")
-    parser.add_argument("--video-quality", default="best[height<=480]", help="视频质量")
+    parser.add_argument("--video-quality", default="bestvideo[height<=480]+bestaudio/best[height<=480]", help="视频质量")
     parser.add_argument("--audio-quality", default="192K", help="音频质量")
     
     args = parser.parse_args()

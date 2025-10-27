@@ -1,4 +1,28 @@
 services:
+  # -------------- PostgreSQL 数据库 --------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: youtube-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: youtube_tasks
+      POSTGRES_USER: youtube
+      POSTGRES_PASSWORD: youtube_pass_2024
+      TZ: Asia/Shanghai
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - youtube_postgres_data:/var/lib/postgresql/data
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U youtube -d youtube_tasks"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # -------------- n8n --------------
   n8n:
     image: docker.n8n.io/n8nio/n8n:latest
@@ -35,17 +59,27 @@ services:
       # 应用配置
       DOWNLOADS_DIR: "/app/downloads"
       TZ: Asia/Shanghai
-      # Python 优化配置（新增）
+      # Python 优化配置
       PYTHONUNBUFFERED: "1"
       PYTHONDONTWRITEBYTECODE: "1"
+      # 数据库配置
+      DATABASE_URL: "postgresql://youtube:youtube_pass_2024@postgres:5432/youtube_tasks"
+      DB_HOST: "postgres"
+      DB_PORT: "5432"
+      DB_NAME: "youtube_tasks"
+      DB_USER: "youtube"
+      DB_PASSWORD: "youtube_pass_2024"
     volumes:
       - ./downloads:/app/downloads
-      - ./cookies:/app/cookies:ro
+      - ./cookies:/app/cookies
       # 可选：日志持久化
       # - ./logs:/app/logs
     networks:
       - internal
-    # 资源限制（新增 - 防止过度占用系统资源）
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # 资源限制
     deploy:
       resources:
         limits:
@@ -54,7 +88,7 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
-    # 健康检查（新增 - 使用已有的 /health 端点）
+    # 健康检查
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
@@ -69,4 +103,6 @@ networks:
 volumes:
   youtube_n8n_data:
     external: true
+  youtube_postgres_data:
+    driver: local
 
