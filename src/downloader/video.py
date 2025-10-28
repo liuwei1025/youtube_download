@@ -97,18 +97,17 @@ def download_and_cut_segment(config: DownloadConfig, output_path: str, content_t
         # 构建下载命令基础部分
         cmd = [
             'yt-dlp',
-            '--proxy', proxy
+            '--proxy', proxy,
+            '--no-cache-dir'  # 禁止缓存，避免尝试写入 cookies 文件
         ]
         
-        # 添加 cookies 参数
+        # 添加 cookies 参数（注意：某些客户端不支持 cookies）
+        # 如果下载失败，yt-dlp 会自动尝试其他客户端
         if config.cookies_file and os.path.exists(config.cookies_file):
-            cmd.extend([
-                '--cookies', config.cookies_file,
-                '--no-cache-dir'  # 禁止缓存，避免尝试写入 cookies 文件
-            ])
+            cmd.extend(['--cookies', config.cookies_file])
             logger.debug(f"使用 cookies 文件: {config.cookies_file}")
         else:
-            logger.warning("未配置 cookies 文件或文件不存在，可能会导致下载失败")
+            logger.warning("未配置 cookies 文件或文件不存在，将使用无需登录的客户端")
         
         # 添加其他参数
         cmd.extend(format_opts)

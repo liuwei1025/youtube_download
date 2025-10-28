@@ -1,5 +1,30 @@
-# 使用多阶段构建减小镜像大小
-FROM python:3.11-slim as builder
+# ============================================
+# 阶段 1: 前端构建
+# ============================================
+FROM node:20-alpine as frontend-builder
+
+WORKDIR /frontend
+
+# 安装 pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+# 复制前端项目文件
+COPY frontend/package.json frontend/pnpm-lock.yaml* ./
+COPY frontend/pnpm-workspace.yaml* ./
+
+# 安装依赖
+RUN pnpm install --frozen-lockfile
+
+# 复制前端源代码
+COPY frontend/ ./
+
+# 构建前端
+RUN pnpm build
+
+# ============================================
+# 阶段 2: Python 依赖构建
+# ============================================
+FROM python:3.11-slim as python-builder
 
 # 设置时区
 ENV TZ=Asia/Shanghai
@@ -15,7 +40,9 @@ WORKDIR /install
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# 最终镜像
+# ============================================
+# 阶段 3: 最终镜像
+# ============================================
 FROM python:3.11-slim
 
 # 设置时区
@@ -30,17 +57,20 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# 复制安装的包
-COPY --from=builder /install /usr/local
+# 复制 Python 依赖
+COPY --from=python-builder /install /usr/local
 
 # 复制应用代码
 COPY . .
+
+# 复制前端构建产物
+COPY --from=frontend-builder /frontend/dist /app/frontend/dist
 
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1
 ENV COOKIES_FILE=/tmp/cookies_youtube
 
-# 创建下载目录和 cookies 目录，并设置权限
+# 创建必要的目录并设置权限
 RUN mkdir -p /app/downloads /app/cookies && \
     chmod 777 /app/downloads && \
     chmod +x /app/entrypoint.sh
@@ -49,6 +79,9 @@ RUN mkdir -p /app/downloads /app/cookies && \
 RUN useradd -m -u 1000 youtube && \
     chown -R youtube:youtube /app
 USER youtube
+
+# 暴露端口
+EXPOSE 8000
 
 # 启动应用
 ENTRYPOINT ["/app/entrypoint.sh"]

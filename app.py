@@ -16,6 +16,8 @@ import traceback
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 # 导入原有的下载功能
@@ -43,6 +45,7 @@ from src.task_service import TaskService
 # 默认保存在项目根目录的 downloads 文件夹
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOADS_DIR = os.environ.get('DOWNLOADS_DIR', os.path.join(BASE_DIR, 'downloads'))
+FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend', 'dist')
 
 # Cookies 文件路径配置（优先使用环境变量，否则使用默认路径）
 COOKIES_FILE = os.environ.get('COOKIES_FILE', os.path.join(BASE_DIR, 'cookies', 'Cookies'))
@@ -83,6 +86,15 @@ app = FastAPI(
     description="支持时间段裁剪、音频提取、字幕下载的 YouTube 下载服务 (数据库版)",
     version="3.0.0",
     lifespan=lifespan
+)
+
+# 配置 CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 生产环境应该限制具体域名
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -203,9 +215,9 @@ async def process_download_task(task_id: str, config: DownloadConfig):
         logger.error(f"任务 {task_id} 异常: {e}", exc_info=True)
 
 
-@app.get("/", response_model=dict)
-async def root():
-    """根路径 - API 信息"""
+@app.get("/api", response_model=dict)
+async def api_root():
+    """API 根路径 - API 信息"""
     return {
         "service": "YouTube下载器 API (数据库版)",
         "version": "3.0.0",
@@ -503,6 +515,39 @@ async def cleanup_tasks(max_age_hours: int = Query(24, description="清理多少
         raise HTTPException(status_code=500, detail=f"清理任务失败: {str(e)}")
 
 
+# 挂载前端静态文件（必须在最后，以免覆盖API路由）
+if os.path.exists(FRONTEND_DIR):
+    # 静态资源（CSS, JS等）
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
+    
+    # SPA fallback - 所有未匹配的路由返回 index.html
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """为 SPA 提供 fallback 路由"""
+        # 如果请求的是文件且存在，直接返回
+        file_path = os.path.join(FRONTEND_DIR, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        
+        # 否则返回 index.html（用于 Vue Router）
+        index_path = os.path.join(FRONTEND_DIR, "index.html")
+        if os.path.isfile(index_path):
+            return FileResponse(index_path)
+        else:
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "前端文件未构建，请先运行: cd frontend && pnpm install && pnpm build"}
+            )
+    
+    logger.info(f"✅ 前端静态文件已挂载: {FRONTEND_DIR}")
+else:
+    logger.warning(f"⚠️  前端构建目录不存在: {FRONTEND_DIR}")
+    logger.warning("提示: 请先构建前端项目")
+    logger.warning("  cd frontend")
+    logger.warning("  pnpm install")
+    logger.warning("  pnpm build")
+
+
 if __name__ == "__main__":
     import uvicorn
     
@@ -510,6 +555,9 @@ if __name__ == "__main__":
     host = os.environ.get("HOST", "0.0.0.0")
     
     logger.info(f"启动服务器: {host}:{port}")
+    logger.info(f"API 文档: http://{host if host != '0.0.0.0' else 'localhost'}:{port}/docs")
+    if os.path.exists(FRONTEND_DIR):
+        logger.info(f"前端界面: http://{host if host != '0.0.0.0' else 'localhost'}:{port}/")
     
     uvicorn.run(
         "app:app",

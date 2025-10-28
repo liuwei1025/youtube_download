@@ -89,14 +89,14 @@ def setup_proxy(config: DownloadConfig):
     """设置代理配置"""
     logger = logging.getLogger(__name__)
     
-    # 优先使用用户指定的代理
-    if config.proxy:
-        proxy = config.proxy
-    # 检查环境变量中的代理设置
-    elif os.environ.get('HTTP_PROXY') or os.environ.get('HTTPS_PROXY'):
+    # 优先使用环境变量（适用于 Docker 容器）
+    if os.environ.get('HTTP_PROXY') or os.environ.get('HTTPS_PROXY'):
         proxy = os.environ.get('HTTP_PROXY') or os.environ.get('HTTPS_PROXY')
         logger.info(f"使用环境变量代理: {proxy}")
-        return proxy
+    # 其次使用用户指定的代理
+    elif config.proxy:
+        proxy = config.proxy
+        logger.info(f"使用配置文件代理: {proxy}")
     # 默认代理（仅在本地开发时使用）
     else:
         proxy = "http://127.0.0.1:7890"

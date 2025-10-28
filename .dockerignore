@@ -1,114 +1,66 @@
-# ============================================
-# 优化后的 .dockerignore
-# 根据模块化重构后的项目结构
-# ============================================
-
-# Git
-.git
-.gitignore
-.github
-
-# Python 缓存和构建产物
-__pycache__/
+# Python
+__pycache__
 *.py[cod]
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
+dist/
+build/
 *.egg
 
-# 虚拟环境
-.venv/
+# Virtual environments
 venv/
-ENV/
 env/
+ENV/
 
-# 测试和覆盖率（新增 - 生产环境不需要）
-tests/
-test_*.py
-*_test.py
-pytest.ini
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-.tox/
-.hypothesis/
-conftest.py
-
-# 开发工具
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# 文档（生产环境不需要，但保留 README）
-docs/
-*.md
-!README.md
+# Git
+.git/
+.gitignore
 
-# 示例和调试文件（新增）
-examples/
-debug_*.py
-*_example.py
-CHANGELOG.md
-PROJECT_*.md
-*_SUMMARY.md
-*_GUIDE.md
-QUICKSTART.md
-*_REPORT.md
-*_VERIFICATION.md
-
-# 日志文件
-*.log
-logs/
-italian_subs_redownload.log
-youtube_downloader.log
-
-# 下载文件（使用卷挂载）
-downloads/
-*.mp4
-*.mp3
-*.vtt
-*.mp3.part
-*.mp4.part
-
-# Cookies（使用卷挂载）
-cookies/
-
-# Docker 自身文件（镜像内不需要）
-docker-compose*.yaml
-Dockerfile*
+# Docker
+Dockerfile
+docker-compose.yaml
 .dockerignore
 
-# CI/CD 和部署配置
-.github/
-railway.json
-*.plan.md
+# Documentation
+*.md
+docs/
 
-# 临时文件
+# Tests
+tests/
+htmlcov/
+.coverage
+pytest.ini
+
+# Logs
+*.log
+logs/
+
+# Downloads (will be mounted as volume)
+downloads/*
+!downloads/.gitkeep
+
+# Frontend development files (we only need source for building)
+frontend/node_modules/
+frontend/dist/
+frontend/.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
 *.tmp
 *.temp
-*.backup
-.DS_Store
-urls.txt
+.cache/
 
-# 测试总结文档（新增）
-TEST_*.md
-SUBTITLE_*.md
-ITALIAN_*.md
-
+# Examples
+examples/

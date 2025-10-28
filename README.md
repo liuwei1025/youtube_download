@@ -20,6 +20,13 @@
 - 🎯 **任务控制** - 取消、删除、查询任务
 - 🔄 **异步处理** - 所有任务异步执行，支持并发
 
+### 🎨 前端管理界面 (NEW!)
+- 🖥️ **现代化UI** - 基于 Vue 3 + Vite 构建的响应式界面
+- 📋 **任务管理** - 可视化任务列表、状态筛选、实时刷新
+- 📥 **文件下载** - 直接从浏览器下载生成的文件
+- 📊 **详情查看** - 查看完整任务信息、进度和日志
+- 🎯 **Feature-Sliced Design** - 清晰的代码架构，易于维护和扩展
+
 ### 技术特性
 - ✅ **RESTful API** - 完整的 HTTP API 服务
 - ✅ **Docker 支持** - 完整的容器化部署方案
@@ -88,7 +95,43 @@ python src/youtube_downloader.py URL --start 1:00 --end 2:00 --config config.jso
 
 **更多命令行选项请查看：** [docs/README.md](docs/README.md)
 
-### 方式二：本地 API 服务
+### 方式二：Web 管理界面（推荐）
+
+#### 1. 构建前端项目
+
+```bash
+# 构建前端（首次使用）
+./build_frontend.sh
+
+# 或手动构建
+cd frontend
+pnpm install
+pnpm build
+cd ..
+```
+
+#### 2. 启动服务
+
+```bash
+# 启动后端服务（会自动提供前端界面）
+python app.py
+
+# 访问地址：
+# - 前端界面: http://localhost:8000
+# - API 文档: http://localhost:8000/docs
+```
+
+**前端界面功能：**
+- ✅ 创建和管理下载任务
+- ✅ 实时查看任务状态和进度
+- ✅ 按状态筛选任务
+- ✅ 查看任务详情和日志
+- ✅ 直接下载生成的文件
+- ✅ 取消和删除任务
+
+详细说明：📖 [前端设置指南](FRONTEND_SETUP.md)
+
+### 方式三：API 服务
 
 #### 直接运行
 
@@ -211,6 +254,7 @@ pytest tests/ -v
 
 ### 快速入门
 - 📘 **[快速启动指南](QUICKSTART.md)** - 30秒上手
+- 🎨 **[前端设置指南](FRONTEND_SETUP.md)** - Web界面开发和部署 🆕
 - 📗 **[任务管理系统](docs/TASK_MANAGEMENT.md)** - 完整功能文档
 - 📙 **[系统架构](docs/SYSTEM_OVERVIEW.md)** - 技术架构说明
 
@@ -347,12 +391,17 @@ youtube/
    - 支持从 Chrome 浏览器导入 Cookie
    - 将 Cookie 文件放在 `cookies/` 目录
 
-4. **存储空间**
+4. **YouTube 403 错误**
+   - 如果遇到 `HTTP Error 403: Forbidden`,请查看 [403 错误解决方案](YOUTUBE_403_QUICK_FIX.md)
+   - 本项目已自动处理此问题,会自动选择最佳客户端
+   - 详细说明: [docs/YOUTUBE_403_FIX.md](docs/YOUTUBE_403_FIX.md)
+
+5. **存储空间**
    - 下载文件默认保存在 `downloads/` 目录
    - Docker 环境中通过卷挂载持久化存储
    - 注意磁盘空间，定期清理旧文件
 
-5. **版权问题**
+6. **版权问题**
    - 请遵守 YouTube 使用条款
    - 仅用于个人学习和研究
    - 不要用于商业用途
