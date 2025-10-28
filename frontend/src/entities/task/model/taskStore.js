@@ -32,10 +32,13 @@ export const useTaskStore = defineStore('task', () => {
     error.value = null
     try {
       const data = await tasksApi.getTasks(params)
-      tasks.value = data
+      // 确保 data 是数组
+      tasks.value = Array.isArray(data) ? data : []
       return data
     } catch (err) {
       error.value = err.message
+      // 出错时设置为空数组，避免 filter 错误
+      tasks.value = []
       throw err
     } finally {
       loading.value = false
