@@ -58,6 +58,7 @@ services:
       NO_PROXY: "localhost,127.0.0.1,n8n,postgres"
       # 应用配置
       DOWNLOADS_DIR: "/app/downloads"
+      COOKIES_FILE: "/app/cookies/Cookies"
       TZ: Asia/Shanghai
       # Python 优化配置
       PYTHONUNBUFFERED: "1"

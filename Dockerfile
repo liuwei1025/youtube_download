@@ -68,7 +68,7 @@ COPY --from=frontend-builder /frontend/dist /app/frontend/dist
 
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1
-ENV COOKIES_FILE=/tmp/cookies_youtube
+ENV COOKIES_FILE=/app/cookies/Cookies
 
 # 创建必要的目录并设置权限
 RUN mkdir -p /app/downloads /app/cookies && \

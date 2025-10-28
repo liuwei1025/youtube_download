@@ -43,7 +43,7 @@ export const tasksApi = {
    * 获取文件下载URL
    */
   getFileDownloadUrl(taskId, fileType) {
-    return `/api/tasks/${taskId}/files/${fileType}`
+    return `/tasks/${taskId}/files/${fileType}`
   },
 
   /**
