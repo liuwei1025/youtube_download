@@ -126,7 +126,7 @@
           </div>
 
           <!-- 音频播放器 -->
-          <div v-if="audioFile && !videoFile" class="space-y-3">
+          <div v-if="audioFile" class="space-y-3" :class="{ 'border-t pt-6': videoFile }">
             <h3 class="text-base font-semibold">音频预览</h3>
             <audio 
               :src="`/api/tasks/${task.task_id}/files/${audioFile.file_type}`"
