@@ -1,8 +1,8 @@
 <template>
   <div class="container mx-auto px-6 py-8 max-w-7xl">
     <!-- 创建任务 Drawer -->
-    <Drawer v-model:open="showCreateForm" direction="right">
-      <DrawerContent class="h-full w-full sm:w-[600px]">
+    <Drawer :open="showCreateForm" @update:open="showCreateForm = $event" direction="right" :dismissible="true" :modal="true">
+      <DrawerContent class="h-full w-full sm:w-[600px]" :disable-outside-pointer-events="true">
         <DrawerHeader>
           <DrawerTitle>创建下载任务</DrawerTitle>
           <DrawerDescription>填写 YouTube 视频信息和下载选项</DrawerDescription>
@@ -230,8 +230,8 @@
     </Card>
 
     <!-- 任务详情 Drawer -->
-    <Drawer v-model:open="drawerOpen" direction="right">
-      <DrawerContent class="h-full w-full sm:w-[600px]">
+    <Drawer :open="drawerOpen" @update:open="drawerOpen = $event" direction="right" :dismissible="true" :modal="true">
+      <DrawerContent class="h-full w-full sm:w-[600px]" :disable-outside-pointer-events="true">
         <DrawerHeader>
           <DrawerTitle>任务详情</DrawerTitle>
           <DrawerDescription v-if="selectedTask">
@@ -636,9 +636,23 @@ function getFileName(filePath) {
 }
 
 function downloadFile(file) {
+  if (!selectedTask.value) {
+    console.error('无法下载：任务信息不存在')
+    return
+  }
+  
+  // 使用正确的API端点：/api/tasks/{task_id}/files/{file_type}
   const baseUrl = import.meta.env.VITE_API_URL || ''
-  const url = `${baseUrl}/api/download/${encodeURIComponent(file.file_path)}`
-  window.open(url, '_blank')
+  const url = `${baseUrl}/api/tasks/${selectedTask.value.task_id}/files/${file.file_type}`
+  
+  // 创建临时链接并触发下载
+  const link = document.createElement('a')
+  link.href = url
+  link.download = file.file_name || getFileName(file.file_path)
+  link.target = '_blank'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
 }
 
 function getFileIconComponent(fileType) {
