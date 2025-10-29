@@ -7,6 +7,7 @@ import logging
 import threading
 from typing import Optional, List
 
+from ..models import FileType
 from .config import DownloadConfig
 from .utils import extract_video_id, setup_proxy
 from .thread_manager import ThreadPoolManager, ThreadSafeProgress
@@ -105,9 +106,9 @@ def process_single_url(config: DownloadConfig) -> Optional[dict]:
     # 第一阶段：并行下载视频和字幕（避免并行下载视频+音频导致 403 错误）
     download_tasks = {}
     if config.download_video:
-        download_tasks['video'] = ('video', video_id, proxy)
+        download_tasks[FileType.VIDEO] = ('video', video_id, proxy)
     if config.download_subtitles:
-        download_tasks['subtitles'] = ('subtitles', video_id, proxy)
+        download_tasks[FileType.SUBTITLES] = ('subtitles', video_id, proxy)
     
     results = {}
     
@@ -124,22 +125,24 @@ def process_single_url(config: DownloadConfig) -> Optional[dict]:
     if config.download_audio:
         logger.info("开始处理音频...")
         audio_path = download_segment(config, 'audio', video_id, proxy)
-        results['audio'] = audio_path
+        results[FileType.AUDIO] = audio_path
     
     # 输出结果
     video_dir = os.path.join(config.output_dir, video_id)
     logger.info(f"🎉 下载完成！文件保存在: {video_dir}/")
     
     for ctype, path in results.items():
+        # 获取显示名称（枚举值转换为标题格式）
+        type_name = ctype.value.replace('_', ' ').title() if isinstance(ctype, FileType) else str(ctype).title()
         if path:
-            logger.info(f"  ✅ {ctype.title()}: {os.path.basename(path)}")
+            logger.info(f"  ✅ {type_name}: {os.path.basename(path)}")
         else:
-            logger.warning(f"  ❌ {ctype.title()}: 下载失败")
+            logger.warning(f"  ❌ {type_name}: 下载失败")
     
     # 烧录字幕到视频
-    if config.burn_subtitles and results.get('video') and results.get('subtitles'):
-        video_path = results['video']
-        subtitle_path = results['subtitles']
+    if config.burn_subtitles and results.get(FileType.VIDEO) and results.get(FileType.SUBTITLES):
+        video_path = results[FileType.VIDEO]
+        subtitle_path = results[FileType.SUBTITLES]
         
         # 生成带字幕的视频文件名
         video_basename = os.path.basename(video_path)
@@ -149,12 +152,12 @@ def process_single_url(config: DownloadConfig) -> Optional[dict]:
         # 检查是否已经存在
         if os.path.exists(output_with_subs) and os.path.getsize(output_with_subs) > 0:
             logger.info(f"✅ 带字幕的视频已存在: {os.path.basename(output_with_subs)}")
-            results['video_with_subs'] = output_with_subs
+            results[FileType.VIDEO_WITH_SUBS] = output_with_subs
         else:
             # 执行字幕烧录
             burned_video = burn_subtitles_to_video(video_path, subtitle_path, output_with_subs)
             if burned_video:
-                results['video_with_subs'] = burned_video
+                results[FileType.VIDEO_WITH_SUBS] = burned_video
             else:
                 logger.warning("字幕烧录失败，保留原始视频文件")
     

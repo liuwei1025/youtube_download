@@ -38,6 +38,7 @@ from src.models import (
     TaskList,
     TaskListResponse,
     TaskStatus,
+    FileType,
     TaskStats,
     TaskLog,
 )
@@ -131,38 +132,43 @@ async def retry_single_file_download(
             subtitle_langs=subtitle_langs,
             proxy=proxy,
             cookies_file=COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
-            # 根据文件类型设置下载选项
-            download_video=(file_type in ['video', 'video_with_subs']),
-            download_audio=(file_type == 'audio'),
-            download_subtitles=(file_type in ['subtitles', 'video_with_subs']),
-            burn_subtitles=(file_type == 'video_with_subs')
+        # 根据文件类型设置下载选项
+        download_video=(file_type in [FileType.VIDEO.value, FileType.VIDEO_WITH_SUBS.value]),
+        download_audio=(file_type == FileType.AUDIO.value),
+        download_subtitles=(file_type in [FileType.SUBTITLES.value, FileType.VIDEO_WITH_SUBS.value]),
+        burn_subtitles=(file_type == FileType.VIDEO_WITH_SUBS.value)
         )
         
         # 执行下载
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, process_single_url, config)
         
-        if result and result.get('success'):
-            # 下载成功，更新文件信息
-            files_info = result.get('files', {})
+        if result:
+            # process_single_url 返回的是字典，key 是 FileType 枚举，value 是文件路径
+            # 将字符串转换为 FileType 枚举进行比较（兼容历史数据）
+            file_type_enum = None
+            try:
+                file_type_enum = FileType(file_type) if file_type in [ft.value for ft in FileType] else None
+            except ValueError:
+                file_type_enum = None
             
-            # 根据文件类型更新对应的文件记录
+            # 根据文件类型获取对应的文件路径
             file_path = None
             file_name = None
             file_size = None
             mime_type = None
             
-            if file_type == 'video' and files_info.get('video'):
-                file_path = files_info['video']
+            if file_type_enum == FileType.VIDEO and result.get(FileType.VIDEO):
+                file_path = result[FileType.VIDEO]
                 mime_type = 'video/mp4'
-            elif file_type == 'audio' and files_info.get('audio'):
-                file_path = files_info['audio']
+            elif file_type_enum == FileType.AUDIO and result.get(FileType.AUDIO):
+                file_path = result[FileType.AUDIO]
                 mime_type = 'audio/mpeg'
-            elif file_type == 'subtitles' and files_info.get('subtitles'):
-                file_path = files_info['subtitles']
+            elif file_type_enum == FileType.SUBTITLES and result.get(FileType.SUBTITLES):
+                file_path = result[FileType.SUBTITLES]
                 mime_type = 'text/vtt'
-            elif file_type == 'video_with_subs' and files_info.get('video_with_subs'):
-                file_path = files_info['video_with_subs']
+            elif file_type_enum == FileType.VIDEO_WITH_SUBS and result.get(FileType.VIDEO_WITH_SUBS):
+                file_path = result[FileType.VIDEO_WITH_SUBS]
                 mime_type = 'video/mp4'
             
             if file_path and os.path.exists(file_path):
@@ -200,8 +206,8 @@ async def retry_single_file_download(
             else:
                 raise Exception(f"文件 {file_type} 下载后未找到")
         else:
-            error_msg = result.get('error', '下载失败') if result else '下载失败'
-            raise Exception(error_msg)
+            # process_single_url 返回 None 表示下载失败
+            raise Exception(f"文件 {file_type} 下载失败")
             
     except Exception as e:
         error_msg = str(e)
@@ -283,18 +289,21 @@ async def process_download_task(task_id: str, config: DownloadConfig):
                     file_name = os.path.basename(file_path)
                     file_size = os.path.getsize(file_path)
                     
-                    # 确定MIME类型
+                    # 确定MIME类型，使用 FileType 枚举的值（字符串）
                     mime_type = 'application/octet-stream'
-                    if content_type == 'video' or content_type == 'video_with_subs':
+                    if content_type == FileType.VIDEO or content_type == FileType.VIDEO_WITH_SUBS:
                         mime_type = 'video/mp4'
-                    elif content_type == 'audio':
+                    elif content_type == FileType.AUDIO:
                         mime_type = 'audio/mpeg'
-                    elif content_type == 'subtitles':
+                    elif content_type == FileType.SUBTITLES:
                         mime_type = 'text/vtt'
+                    
+                    # 将枚举值转换为字符串存储到数据库
+                    file_type_str = content_type.value if isinstance(content_type, FileType) else str(content_type)
                     
                     await TaskService.add_task_file(
                         task_id,
-                        content_type,
+                        file_type_str,
                         file_name,
                         file_path,
                         file_size,
@@ -303,7 +312,7 @@ async def process_download_task(task_id: str, config: DownloadConfig):
                     await TaskService.add_task_log(
                         task_id,
                         'INFO',
-                        f'已保存文件: {content_type} - {file_name}'
+                        f'已保存文件: {file_type_str} - {file_name}'
                     )
             
             # 更新为完成状态
