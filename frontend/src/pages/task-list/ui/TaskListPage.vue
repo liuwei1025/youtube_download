@@ -87,8 +87,7 @@
         <TableHeader>
           <TableRow>
             <TableHead class="w-[100px]">状态</TableHead>
-            <TableHead class="w-[150px]">视频ID</TableHead>
-            <TableHead>URL</TableHead>
+            <TableHead class="w-[130px]">视频ID</TableHead>
             <TableHead class="w-[120px]">资源</TableHead>
             <TableHead class="w-[100px]">进度</TableHead>
             <TableHead class="w-[160px]">创建时间</TableHead>
@@ -104,18 +103,13 @@
               </Badge>
             </TableCell>
             <TableCell>
-              <span class="font-mono text-xs text-muted-foreground" :title="task.video_id || task.task_id">
-                {{ task.video_id || task.task_id.slice(0, 8) }}
-              </span>
-            </TableCell>
-            <TableCell>
               <a 
                 :href="task.url" 
                 target="_blank" 
-                class="text-primary hover:underline max-w-xs truncate block" 
+                class="font-mono text-xs text-primary hover:underline" 
                 :title="task.url"
               >
-                {{ task.url }}
+                {{ getVideoIdFromTask(task) }}
               </a>
             </TableCell>
             <TableCell>
@@ -279,6 +273,35 @@ function getStatusVariant(status) {
     cancelled: 'warning'
   }
   return variants[status] || 'secondary'
+}
+
+function getVideoIdFromTask(task) {
+  // 如果有 video_id 字段，直接返回
+  if (task.video_id) {
+    return task.video_id
+  }
+  
+  // 从 URL 中提取视频ID
+  try {
+    const url = task.url
+    
+    // 匹配 youtube.com/watch?v=VIDEO_ID
+    const watchMatch = url.match(/[?&]v=([^&]+)/)
+    if (watchMatch) {
+      return watchMatch[1]
+    }
+    
+    // 匹配 youtu.be/VIDEO_ID
+    const shortMatch = url.match(/youtu\.be\/([^?]+)/)
+    if (shortMatch) {
+      return shortMatch[1]
+    }
+    
+    // 如果无法提取，返回任务ID的前8位
+    return task.task_id.slice(0, 8)
+  } catch (e) {
+    return task.task_id.slice(0, 8)
+  }
 }
 
 async function loadTasks() {
