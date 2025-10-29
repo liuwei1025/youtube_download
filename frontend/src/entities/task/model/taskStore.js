@@ -94,6 +94,22 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
+  async function retryTask(taskId) {
+    loading.value = true
+    error.value = null
+    try {
+      const data = await tasksApi.retryTask(taskId)
+      // 刷新任务列表
+      await fetchTasks()
+      return data
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function deleteTask(taskId, deleteFiles = true) {
     try {
       await tasksApi.deleteTask(taskId, deleteFiles)
@@ -134,6 +150,7 @@ export const useTaskStore = defineStore('task', () => {
     fetchTask,
     createTask,
     cancelTask,
+    retryTask,
     deleteTask,
     clearCurrentTask,
     clearError

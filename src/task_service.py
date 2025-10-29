@@ -142,7 +142,8 @@ class TaskService:
                 SELECT 
                     task_id, status, url, video_id, video_title,
                     progress, progress_percentage,
-                    created_at, completed_at, error_message
+                    created_at, completed_at, error_message,
+                    download_video, download_audio, download_subtitles
                 FROM tasks
                 WHERE status = $1
                 ORDER BY created_at DESC
@@ -154,7 +155,8 @@ class TaskService:
                 SELECT 
                     task_id, status, url, video_id, video_title,
                     progress, progress_percentage,
-                    created_at, completed_at, error_message
+                    created_at, completed_at, error_message,
+                    download_video, download_audio, download_subtitles
                 FROM tasks
                 ORDER BY created_at DESC
                 LIMIT $1 OFFSET $2
@@ -392,4 +394,67 @@ class TaskService:
             progress='任务已取消',
             progress_percentage=0
         )
+    
+    @staticmethod
+    async def retry_task(task_id: str) -> str:
+        """
+        重试失败的任务
+        
+        Args:
+            task_id: 任务ID
+        
+        Returns:
+            new_task_id: 新任务ID
+        """
+        # 获取原任务
+        task = await TaskService.get_task(task_id)
+        if not task:
+            raise ValueError(f"任务 {task_id} 不存在")
+        
+        # 只能重试失败或取消的任务
+        if task.status not in [TaskStatus.FAILED, TaskStatus.CANCELLED]:
+            raise ValueError(f"只能重试失败或已取消的任务，当前状态: {task.status}")
+        
+        # 创建新任务，使用原任务的配置
+        new_task_id = await TaskService.create_task(
+            url=task.url,
+            start_time=task.start_time,
+            end_time=task.end_time,
+            proxy=task.proxy,
+            subtitle_langs=task.subtitle_langs,
+            download_video=task.download_video,
+            download_audio=task.download_audio,
+            download_subtitles=task.download_subtitles,
+            burn_subtitles=task.burn_subtitles,
+            video_quality=task.video_quality,
+            audio_quality=task.audio_quality,
+            max_retries=task.max_retries
+        )
+        
+        # 记录日志
+        await TaskService.add_task_log(
+            new_task_id,
+            'INFO',
+            f'从任务 {task_id} 重试'
+        )
+        
+        return new_task_id
+    
+    @staticmethod
+    async def get_tasks_count(status: Optional[str] = None) -> int:
+        """
+        获取任务总数
+        
+        Args:
+            status: 过滤状态
+        
+        Returns:
+            任务总数
+        """
+        if status:
+            query = "SELECT COUNT(*) FROM tasks WHERE status = $1"
+            return await db.fetchval(query, status)
+        else:
+            query = "SELECT COUNT(*) FROM tasks"
+            return await db.fetchval(query)
 

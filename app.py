@@ -36,6 +36,7 @@ from src.models import (
     TaskResponse,
     TaskDetail,
     TaskList,
+    TaskListResponse,
     TaskStatus,
     TaskStats,
     TaskLog,
@@ -96,6 +97,136 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+async def retry_single_file_download(
+    task_id: str,
+    file_type: str,
+    url: str,
+    start_time: Optional[str],
+    end_time: Optional[str],
+    subtitle_langs: Optional[str],
+    proxy: Optional[str]
+):
+    """重新下载单个失败的文件"""
+    try:
+        await TaskService.add_log(task_id, 'INFO', f'开始重新下载文件: {file_type}')
+        
+        # 更新文件状态为processing
+        await db.execute(
+            """
+            UPDATE task_files 
+            SET status = 'processing'
+            WHERE task_id = :task_id AND file_type = :file_type
+            """,
+            {"task_id": task_id, "file_type": file_type}
+        )
+        
+        # 构建下载配置
+        config = DownloadConfig(
+            url=url,
+            output_dir=DOWNLOADS_DIR,
+            start_time=start_time,
+            end_time=end_time,
+            subtitle_langs=subtitle_langs,
+            proxy=proxy,
+            cookies_file=COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
+            # 根据文件类型设置下载选项
+            download_video=(file_type in ['video', 'video_with_subs']),
+            download_audio=(file_type == 'audio'),
+            download_subtitles=(file_type in ['subtitles', 'video_with_subs']),
+            burn_subtitles=(file_type == 'video_with_subs')
+        )
+        
+        # 执行下载
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, process_single_url, config)
+        
+        if result and result.get('success'):
+            # 下载成功，更新文件信息
+            files_info = result.get('files', {})
+            
+            # 根据文件类型更新对应的文件记录
+            file_path = None
+            file_name = None
+            file_size = None
+            mime_type = None
+            
+            if file_type == 'video' and files_info.get('video'):
+                file_path = files_info['video']
+                mime_type = 'video/mp4'
+            elif file_type == 'audio' and files_info.get('audio'):
+                file_path = files_info['audio']
+                mime_type = 'audio/mpeg'
+            elif file_type == 'subtitles' and files_info.get('subtitles'):
+                file_path = files_info['subtitles']
+                mime_type = 'text/vtt'
+            elif file_type == 'video_with_subs' and files_info.get('video_with_subs'):
+                file_path = files_info['video_with_subs']
+                mime_type = 'video/mp4'
+            
+            if file_path and os.path.exists(file_path):
+                file_name = os.path.basename(file_path)
+                file_size = os.path.getsize(file_path)
+                
+                # 更新文件记录
+                await db.execute(
+                    """
+                    UPDATE task_files 
+                    SET file_name = :file_name,
+                        file_path = :file_path,
+                        file_size = :file_size,
+                        mime_type = :mime_type,
+                        status = 'completed',
+                        error_message = NULL
+                    WHERE task_id = :task_id AND file_type = :file_type
+                    """,
+                    {
+                        "task_id": task_id,
+                        "file_type": file_type,
+                        "file_name": file_name,
+                        "file_path": file_path,
+                        "file_size": file_size,
+                        "mime_type": mime_type
+                    }
+                )
+                
+                await TaskService.add_log(
+                    task_id, 
+                    'INFO', 
+                    f'文件重新下载成功: {file_type} -> {file_name}'
+                )
+                logger.info(f"任务 {task_id} 文件 {file_type} 重新下载成功")
+            else:
+                raise Exception(f"文件 {file_type} 下载后未找到")
+        else:
+            error_msg = result.get('error', '下载失败') if result else '下载失败'
+            raise Exception(error_msg)
+            
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"任务 {task_id} 文件 {file_type} 重新下载失败: {error_msg}", exc_info=True)
+        
+        # 更新文件状态为failed
+        await db.execute(
+            """
+            UPDATE task_files 
+            SET status = 'failed',
+                error_message = :error_message
+            WHERE task_id = :task_id AND file_type = :file_type
+            """,
+            {
+                "task_id": task_id,
+                "file_type": file_type,
+                "error_message": error_msg[:500]  # 限制错误信息长度
+            }
+        )
+        
+        await TaskService.add_log(
+            task_id,
+            'ERROR',
+            f'文件 {file_type} 重新下载失败: {error_msg}'
+        )
 
 
 async def process_download_task(task_id: str, config: DownloadConfig):
@@ -235,7 +366,7 @@ async def api_root():
     }
 
 
-@app.get("/health")
+@app.get("/api/health")
 async def health_check():
     """健康检查端点"""
     try:
@@ -256,7 +387,7 @@ async def health_check():
     }
 
 
-@app.post("/download", response_model=TaskResponse)
+@app.post("/api/download", response_model=TaskResponse)
 async def create_download_task(
     request: DownloadRequest,
     background_tasks: BackgroundTasks
@@ -326,22 +457,29 @@ async def create_download_task(
         raise HTTPException(status_code=500, detail=f"创建任务失败: {str(e)}")
 
 
-@app.get("/tasks", response_model=List[TaskList])
+@app.get("/api/tasks", response_model=TaskListResponse)
 async def list_tasks(
     status: Optional[str] = Query(None, description="过滤状态: pending, processing, completed, failed, cancelled"),
-    limit: int = Query(50, description="返回数量限制", ge=1, le=100),
+    limit: int = Query(10, description="返回数量限制", ge=1, le=100),
     offset: int = Query(0, description="偏移量", ge=0)
 ):
-    """获取任务列表"""
+    """获取任务列表（带分页）"""
     try:
         tasks = await TaskService.list_tasks(status=status, limit=limit, offset=offset)
-        return tasks
+        total = await TaskService.get_tasks_count(status=status)
+        
+        return TaskListResponse(
+            tasks=tasks,
+            total=total,
+            limit=limit,
+            offset=offset
+        )
     except Exception as e:
         logger.error(f"获取任务列表失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"获取任务列表失败: {str(e)}")
 
 
-@app.get("/tasks/{task_id}", response_model=TaskDetail)
+@app.get("/api/tasks/{task_id}", response_model=TaskDetail)
 async def get_task_status(task_id: str):
     """获取任务详情"""
     try:
@@ -356,7 +494,7 @@ async def get_task_status(task_id: str):
         raise HTTPException(status_code=500, detail=f"获取任务详情失败: {str(e)}")
 
 
-@app.get("/tasks/{task_id}/logs", response_model=List[TaskLog])
+@app.get("/api/tasks/{task_id}/logs", response_model=List[TaskLog])
 async def get_task_logs(
     task_id: str,
     limit: int = Query(100, description="返回数量限制", ge=1, le=1000)
@@ -377,7 +515,7 @@ async def get_task_logs(
         raise HTTPException(status_code=500, detail=f"获取任务日志失败: {str(e)}")
 
 
-@app.get("/tasks/{task_id}/files")
+@app.get("/api/tasks/{task_id}/files")
 async def get_task_files(task_id: str):
     """获取任务的所有文件列表"""
     try:
@@ -397,7 +535,7 @@ async def get_task_files(task_id: str):
         raise HTTPException(status_code=500, detail=f"获取任务文件列表失败: {str(e)}")
 
 
-@app.get("/tasks/{task_id}/files/{file_type}")
+@app.get("/api/tasks/{task_id}/files/{file_type}")
 async def download_file(task_id: str, file_type: str):
     """
     下载任务生成的文件
@@ -439,7 +577,7 @@ async def download_file(task_id: str, file_type: str):
         raise HTTPException(status_code=500, detail=f"下载文件失败: {str(e)}")
 
 
-@app.delete("/tasks/{task_id}")
+@app.delete("/api/tasks/{task_id}")
 async def delete_task(task_id: str, delete_files: bool = Query(True, description="是否删除相关文件")):
     """删除任务及其文件"""
     try:
@@ -466,7 +604,7 @@ async def delete_task(task_id: str, delete_files: bool = Query(True, description
         raise HTTPException(status_code=500, detail=f"删除任务失败: {str(e)}")
 
 
-@app.post("/tasks/{task_id}/cancel")
+@app.post("/api/tasks/{task_id}/cancel")
 async def cancel_task(task_id: str):
     """取消任务"""
     try:
@@ -489,7 +627,66 @@ async def cancel_task(task_id: str):
         raise HTTPException(status_code=500, detail=f"取消任务失败: {str(e)}")
 
 
-@app.get("/stats", response_model=TaskStats)
+@app.post("/api/tasks/{task_id}/retry", response_model=TaskResponse)
+async def retry_task(task_id: str, background_tasks: BackgroundTasks):
+    """重试失败的任务"""
+    try:
+        task = await TaskService.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+        
+        if task.status not in [TaskStatus.FAILED, TaskStatus.CANCELLED]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"只能重试失败或已取消的任务，当前状态: {task.status}"
+            )
+        
+        # 创建新任务
+        new_task_id = await TaskService.retry_task(task_id)
+        
+        # 创建下载配置
+        config = DownloadConfig(
+            url=task.url,
+            start_time=task.start_time,
+            end_time=task.end_time,
+            output_dir=DOWNLOADS_DIR,
+            proxy=task.proxy,
+            subtitle_langs=task.subtitle_langs,
+            download_video=task.download_video,
+            download_audio=task.download_audio,
+            download_subtitles=task.download_subtitles,
+            burn_subtitles=task.burn_subtitles,
+            max_retries=task.max_retries,
+            video_quality=task.video_quality,
+            audio_quality=task.audio_quality,
+            cookies_file=COOKIES_FILE if os.path.exists(COOKIES_FILE) else None
+        )
+        
+        # 添加后台任务
+        background_tasks.add_task(process_download_task, new_task_id, config)
+        
+        logger.info(f"重试任务: {task_id} -> {new_task_id}")
+        
+        # 获取新任务信息
+        new_task = await TaskService.get_task(new_task_id)
+        
+        return TaskResponse(
+            task_id=new_task_id,
+            status=TaskStatus.PENDING,
+            message=f"任务已重新创建，正在处理中（原任务: {task_id}）",
+            created_at=new_task.created_at
+        )
+        
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"重试任务失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"重试任务失败: {str(e)}")
+
+
+@app.get("/api/stats", response_model=TaskStats)
 async def get_stats():
     """获取任务统计信息"""
     try:
@@ -500,7 +697,7 @@ async def get_stats():
         raise HTTPException(status_code=500, detail=f"获取统计信息失败: {str(e)}")
 
 
-@app.post("/cleanup")
+@app.post("/api/cleanup")
 async def cleanup_tasks(max_age_hours: int = Query(24, description="清理多少小时前的任务")):
     """手动清理旧任务"""
     try:
@@ -513,6 +710,74 @@ async def cleanup_tasks(max_age_hours: int = Query(24, description="清理多少
     except Exception as e:
         logger.error(f"清理任务失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"清理任务失败: {str(e)}")
+
+
+@app.post("/api/tasks/{task_id}/files/{file_type}/retry")
+async def retry_file_download(
+    task_id: str, 
+    file_type: str,
+    background_tasks: BackgroundTasks
+):
+    """重新下载失败的单个文件
+    
+    Args:
+        task_id: 任务ID
+        file_type: 文件类型 (video, audio, subtitles, video_with_subs)
+    """
+    try:
+        # 获取任务
+        task = await TaskService.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+        
+        # 检查文件类型是否有效
+        valid_types = ['video', 'audio', 'subtitles', 'video_with_subs']
+        if file_type not in valid_types:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"无效的文件类型: {file_type}。有效类型: {', '.join(valid_types)}"
+            )
+        
+        # 更新文件状态为pending
+        await db.execute(
+            """
+            UPDATE task_files 
+            SET status = 'pending', error_message = NULL
+            WHERE task_id = :task_id AND file_type = :file_type
+            """,
+            {"task_id": task_id, "file_type": file_type}
+        )
+        
+        # 记录日志
+        await TaskService.add_log(
+            task_id, 
+            "INFO", 
+            f"准备重新下载文件: {file_type}"
+        )
+        
+        # 在后台重新下载该文件
+        background_tasks.add_task(
+            retry_single_file_download,
+            task_id,
+            file_type,
+            task.url,
+            task.start_time,
+            task.end_time,
+            task.subtitle_langs,
+            task.proxy
+        )
+        
+        return {
+            "message": f"已开始重新下载文件: {file_type}",
+            "task_id": task_id,
+            "file_type": file_type
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"重新下载文件失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"重新下载文件失败: {str(e)}")
 
 
 # 挂载前端静态文件（必须在最后，以免覆盖API路由）

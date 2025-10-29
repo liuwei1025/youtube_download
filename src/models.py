@@ -58,6 +58,8 @@ class TaskFile(BaseModel):
     file_path: str
     file_size: Optional[int] = None
     mime_type: Optional[str] = None
+    status: str = 'completed'  # pending, processing, completed, failed
+    error_message: Optional[str] = None
     created_at: datetime
 
 
@@ -123,6 +125,17 @@ class TaskList(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    download_video: bool = True
+    download_audio: bool = True
+    download_subtitles: bool = True
+
+
+class TaskListResponse(BaseModel):
+    """任务列表响应模型（带分页）"""
+    tasks: List[TaskList]
+    total: int
+    limit: int
+    offset: int
 
 
 class TaskStats(BaseModel):

@@ -11,6 +11,26 @@
     </BaseButton>
     
     <BaseButton
+      v-if="task.status === 'failed' || task.status === 'cancelled'"
+      size="small"
+      variant="primary"
+      @click="handleRetry"
+      :disabled="loading"
+    >
+      重试
+    </BaseButton>
+    
+    <BaseButton
+      v-if="task.status === 'completed'"
+      size="small"
+      variant="primary"
+      @click="handleRegenerate"
+      :disabled="loading"
+    >
+      重新生成
+    </BaseButton>
+    
+    <BaseButton
       size="small"
       variant="danger"
       @click="handleDelete"
@@ -53,6 +73,44 @@ async function handleCancel() {
     }
   } catch (err) {
     alert(`取消失败: ${err.message}`)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleRetry() {
+  if (!confirm('确定要重试这个任务吗？')) {
+    return
+  }
+
+  loading.value = true
+  try {
+    const result = await taskStore.retryTask(props.task.task_id)
+    alert(`任务已重新创建！新任务ID: ${result.task_id}`)
+    if (props.onSuccess) {
+      props.onSuccess('retried')
+    }
+  } catch (err) {
+    alert(`重试失败: ${err.message}`)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleRegenerate() {
+  if (!confirm('确定要重新生成这个任务吗？这将创建一个新任务使用相同的配置。')) {
+    return
+  }
+
+  loading.value = true
+  try {
+    const result = await taskStore.retryTask(props.task.task_id)
+    alert(`任务已重新创建！新任务ID: ${result.task_id}`)
+    if (props.onSuccess) {
+      props.onSuccess('regenerated')
+    }
+  } catch (err) {
+    alert(`重新生成失败: ${err.message}`)
   } finally {
     loading.value = false
   }
