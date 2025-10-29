@@ -1,49 +1,49 @@
 <template>
-  <div class="task-actions">
-    <BaseButton
+  <div class="flex gap-2">
+    <Button
       v-if="task.status === 'pending' || task.status === 'processing'"
-      size="small"
-      variant="warning"
+      size="sm"
+      variant="outline"
       @click="handleCancel"
       :disabled="loading"
     >
       取消
-    </BaseButton>
+    </Button>
     
-    <BaseButton
+    <Button
       v-if="task.status === 'failed' || task.status === 'cancelled'"
-      size="small"
-      variant="primary"
+      size="sm"
+      variant="default"
       @click="handleRetry"
       :disabled="loading"
     >
       重试
-    </BaseButton>
+    </Button>
     
-    <BaseButton
+    <Button
       v-if="task.status === 'completed'"
-      size="small"
-      variant="primary"
+      size="sm"
+      variant="default"
       @click="handleRegenerate"
       :disabled="loading"
     >
       重新生成
-    </BaseButton>
+    </Button>
     
-    <BaseButton
-      size="small"
-      variant="danger"
+    <Button
+      size="sm"
+      variant="destructive"
       @click="handleDelete"
       :disabled="loading"
     >
       删除
-    </BaseButton>
+    </Button>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
-import { BaseButton } from '@shared/ui'
+import { Button } from '@components/ui'
 import { useTaskStore } from '@entities/task'
 
 const props = defineProps({
@@ -134,11 +134,4 @@ async function handleDelete() {
   }
 }
 </script>
-
-<style scoped>
-.task-actions {
-  display: flex;
-  gap: 8px;
-}
-</style>
 

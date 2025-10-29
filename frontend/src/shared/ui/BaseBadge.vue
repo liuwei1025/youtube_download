@@ -1,52 +1,35 @@
 <template>
-  <span :class="['base-badge', `base-badge--${variant}`]">
+  <Badge :variant="mappedVariant">
     <slot />
-  </span>
+  </Badge>
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+import { Badge } from '@components/ui'
+
+const props = defineProps({
   variant: {
     type: String,
     default: 'default',
     validator: (value) => ['default', 'success', 'warning', 'danger', 'info'].includes(value)
+  },
+  size: {
+    type: String,
+    default: 'default'
   }
 })
+
+// 映射旧的 variant 到新的 shadcn-vue variant
+const mappedVariant = computed(() => {
+  const variantMap = {
+    default: 'secondary',
+    success: 'success',
+    warning: 'warning',
+    danger: 'destructive',
+    info: 'info'
+  }
+  return variantMap[props.variant] || 'secondary'
+})
 </script>
-
-<style scoped>
-.base-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.base-badge--default {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.base-badge--success {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-.base-badge--warning {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.base-badge--danger {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.base-badge--info {
-  background: #dbeafe;
-  color: #1e40af;
-}
-</style>
 

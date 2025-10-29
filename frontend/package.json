@@ -10,17 +10,27 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore"
   },
   "dependencies": {
-    "vue": "^3.4.21",
-    "vue-router": "^4.3.0",
-    "pinia": "^2.1.7",
+    "@vueuse/core": "^14.0.0",
     "axios": "^1.6.7",
-    "dayjs": "^1.11.10"
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dayjs": "^1.11.10",
+    "lucide-vue-next": "^0.548.0",
+    "pinia": "^2.1.7",
+    "radix-vue": "^1.9.17",
+    "tailwind-merge": "^3.3.1",
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.16",
     "@vitejs/plugin-vue": "^5.0.4",
-    "vite": "^5.1.5",
+    "autoprefixer": "^10.4.21",
     "eslint": "^8.57.0",
-    "eslint-plugin-vue": "^9.22.0"
+    "eslint-plugin-vue": "^9.22.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.16",
+    "vite": "^5.1.5"
   },
   "packageManager": "pnpm@10.6.5+sha512.cdf928fca20832cd59ec53826492b7dc25dc524d4370b6b4adbf65803d32efaa6c1c88147c0ae4e8d579a6c9eec715757b50d4fa35eea179d868eada4ed043af"
 }

@@ -1,16 +1,16 @@
 <template>
-  <div class="create-task-form">
-    <div class="form-header">
-      <h2>创建下载任务</h2>
-      <button type="button" class="example-btn" @click="fillExample">
+  <div class="max-w-2xl">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-xl font-semibold">创建下载任务</h2>
+      <Button variant="outline" size="sm" @click="fillExample">
         📝 填充示例
-      </button>
+      </Button>
     </div>
     
-    <form @submit.prevent="handleSubmit">
-      <div class="form-group">
-        <label for="url">YouTube URL *</label>
-        <input
+    <form @submit.prevent="handleSubmit" class="space-y-5">
+      <div class="space-y-2">
+        <label for="url" class="text-sm font-medium">YouTube URL *</label>
+        <Input
           id="url"
           v-model="formData.url"
           type="url"
@@ -19,68 +19,68 @@
         />
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label for="start_time">开始时间 *</label>
-          <input
+      <div class="grid grid-cols-2 gap-4">
+        <div class="space-y-2">
+          <label for="start_time" class="text-sm font-medium">开始时间 *</label>
+          <Input
             id="start_time"
             v-model="formData.start_time"
             type="text"
             placeholder="00:30 或 30"
             required
           />
-          <small>格式: HH:MM:SS, MM:SS 或秒数</small>
+          <p class="text-xs text-muted-foreground">格式: HH:MM:SS, MM:SS 或秒数</p>
         </div>
 
-        <div class="form-group">
-          <label for="end_time">结束时间 *</label>
-          <input
+        <div class="space-y-2">
+          <label for="end_time" class="text-sm font-medium">结束时间 *</label>
+          <Input
             id="end_time"
             v-model="formData.end_time"
             type="text"
             placeholder="01:30 或 90"
             required
           />
-          <small>格式: HH:MM:SS, MM:SS 或秒数</small>
+          <p class="text-xs text-muted-foreground">格式: HH:MM:SS, MM:SS 或秒数</p>
         </div>
       </div>
 
-      <div class="form-group">
-        <label>下载选项</label>
-        <div class="checkbox-group">
-          <label>
-            <input v-model="formData.download_video" type="checkbox" />
-            下载视频
+      <div class="space-y-3">
+        <label class="text-sm font-medium">下载选项</label>
+        <div class="space-y-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input v-model="formData.download_video" type="checkbox" class="w-4 h-4 rounded border-input" />
+            <span class="text-sm">下载视频</span>
           </label>
-          <label>
-            <input v-model="formData.download_audio" type="checkbox" />
-            下载音频
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input v-model="formData.download_audio" type="checkbox" class="w-4 h-4 rounded border-input" />
+            <span class="text-sm">下载音频</span>
           </label>
-          <label>
-            <input v-model="formData.download_subtitles" type="checkbox" />
-            下载字幕
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input v-model="formData.download_subtitles" type="checkbox" class="w-4 h-4 rounded border-input" />
+            <span class="text-sm">下载字幕</span>
           </label>
-          <label>
-            <input v-model="formData.burn_subtitles" type="checkbox" />
-            字幕硬编码
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input v-model="formData.burn_subtitles" type="checkbox" class="w-4 h-4 rounded border-input" />
+            <span class="text-sm">字幕硬编码</span>
           </label>
         </div>
       </div>
 
-      <div class="form-group">
-        <label for="subtitle_langs">字幕语言</label>
-        <input
+      <div class="space-y-2">
+        <label for="subtitle_langs" class="text-sm font-medium">字幕语言</label>
+        <Input
           id="subtitle_langs"
           v-model="formData.subtitle_langs"
           type="text"
           placeholder="zh,en,it"
         />
-        <small>多个语言用逗号分隔</small>
+        <p class="text-xs text-muted-foreground">多个语言用逗号分隔</p>
       </div>
 
-      <div class="form-group">
-        <label for="proxy">代理服务器（可选）</label>
-        <input
+      <div class="space-y-2">
+        <label for="proxy" class="text-sm font-medium">代理服务器（可选）</label>
+        <Input
           id="proxy"
           v-model="formData.proxy"
           type="text"
@@ -88,17 +88,17 @@
         />
       </div>
 
-      <div class="form-actions">
-        <BaseButton type="submit" variant="primary" :disabled="loading">
+      <div class="flex gap-3 pt-4">
+        <Button type="submit" variant="default" :disabled="loading">
           {{ loading ? '创建中...' : '创建任务' }}
-        </BaseButton>
-        <BaseButton v-if="onCancel" type="button" variant="secondary" @click="onCancel">
+        </Button>
+        <Button v-if="onCancel" type="button" variant="outline" @click="onCancel">
           取消
-        </BaseButton>
+        </Button>
       </div>
     </form>
 
-    <div v-if="error" class="error-message">
+    <div v-if="error" class="mt-4 p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
       {{ error }}
     </div>
   </div>
@@ -106,7 +106,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { BaseButton } from '@shared/ui'
+import { Button, Input } from '@components/ui'
 import { useTaskStore } from '@entities/task'
 
 const props = defineProps({
@@ -186,116 +186,3 @@ function fillExample() {
   }
 }
 </script>
-
-<style scoped>
-.create-task-form {
-  max-width: 600px;
-}
-
-.form-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-h2 {
-  margin: 0;
-  color: #111827;
-}
-
-.example-btn {
-  padding: 8px 16px;
-  background: #f3f4f6;
-  color: #374151;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.example-btn:hover {
-  background: #e5e7eb;
-  border-color: #9ca3af;
-  transform: translateY(-1px);
-}
-
-.form-group {
-  margin-bottom: 20px;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 500;
-  color: #374151;
-  font-size: 14px;
-}
-
-input[type="url"],
-input[type="text"] {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 14px;
-  font-family: inherit;
-  transition: border-color 0.2s;
-}
-
-input[type="url"]:focus,
-input[type="text"]:focus {
-  outline: none;
-  border-color: #3b82f6;
-}
-
-small {
-  display: block;
-  margin-top: 4px;
-  color: #6b7280;
-  font-size: 12px;
-}
-
-.checkbox-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.checkbox-group label {
-  display: flex;
-  align-items: center;
-  margin-bottom: 0;
-  font-weight: normal;
-  cursor: pointer;
-}
-
-.checkbox-group input[type="checkbox"] {
-  margin-right: 8px;
-  cursor: pointer;
-}
-
-.form-actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 24px;
-}
-
-.error-message {
-  margin-top: 16px;
-  padding: 12px;
-  background: #fee2e2;
-  color: #991b1b;
-  border-radius: 6px;
-  font-size: 14px;
-}
-</style>
-

@@ -1,203 +1,224 @@
 <template>
-  <div class="task-list-page">
-    <div class="page-header">
-      <div>
-        <h1>任务管理</h1>
-        <p class="subtitle">YouTube 视频下载任务</p>
-      </div>
+  <div class="container mx-auto px-6 py-8 max-w-7xl">
+    <!-- 页面标题 -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-foreground">任务管理</h1>
+      <p class="text-muted-foreground mt-2">YouTube 视频下载任务</p>
     </div>
 
-    <div v-if="showCreateForm" class="create-form-section">
-      <CreateTaskForm 
-        :on-success="handleTaskCreated"
-        :on-cancel="() => showCreateForm = false"
-      />
-    </div>
+    <!-- 创建任务表单 -->
+    <Card v-if="showCreateForm" class="mb-8">
+      <CardContent class="p-6">
+        <CreateTaskForm 
+          :on-success="handleTaskCreated"
+          :on-cancel="() => showCreateForm = false"
+        />
+      </CardContent>
+    </Card>
 
-    <div class="filters">
-      <div class="filter-buttons">
-        <button
-          :class="['filter-btn', { active: currentFilter === null }]"
+    <!-- 过滤器 -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+      <div class="flex flex-wrap gap-2">
+        <Button
+          :variant="currentFilter === null ? 'default' : 'outline'"
+          size="sm"
           @click="setFilter(null)"
         >
           全部 ({{ total }})
-        </button>
-        <button
-          :class="['filter-btn', { active: currentFilter === 'pending' }]"
+        </Button>
+        <Button
+          :variant="currentFilter === 'pending' ? 'default' : 'outline'"
+          size="sm"
           @click="setFilter('pending')"
         >
           等待中
-        </button>
-        <button
-          :class="['filter-btn', { active: currentFilter === 'processing' }]"
+        </Button>
+        <Button
+          :variant="currentFilter === 'processing' ? 'default' : 'outline'"
+          size="sm"
           @click="setFilter('processing')"
         >
           处理中
-        </button>
-        <button
-          :class="['filter-btn', { active: currentFilter === 'completed' }]"
+        </Button>
+        <Button
+          :variant="currentFilter === 'completed' ? 'default' : 'outline'"
+          size="sm"
           @click="setFilter('completed')"
         >
           已完成
-        </button>
-        <button
-          :class="['filter-btn', { active: currentFilter === 'failed' }]"
+        </Button>
+        <Button
+          :variant="currentFilter === 'failed' ? 'default' : 'outline'"
+          size="sm"
           @click="setFilter('failed')"
         >
           失败
-        </button>
+        </Button>
       </div>
       
-      <BaseButton size="small" variant="secondary" @click="loadTasks">
+      <Button size="sm" variant="outline" @click="loadTasks">
         刷新
-      </BaseButton>
+      </Button>
     </div>
 
-    <div v-if="loading" class="loading-container">
+    <!-- 加载状态 -->
+    <div v-if="loading" class="text-center py-16">
       <LoadingSpinner text="加载中..." />
     </div>
 
-    <div v-else-if="error" class="error-container">
-      <p class="error-text">{{ error }}</p>
-      <BaseButton variant="primary" @click="loadTasks">重试</BaseButton>
-    </div>
+    <!-- 错误状态 -->
+    <Card v-else-if="error" class="text-center py-16">
+      <CardContent>
+        <p class="text-destructive mb-4">{{ error }}</p>
+        <Button variant="default" @click="loadTasks">重试</Button>
+      </CardContent>
+    </Card>
 
-    <div v-else-if="tasks.length === 0" class="empty-container">
-      <p class="empty-text">暂无任务</p>
-    </div>
+    <!-- 空状态 -->
+    <Card v-else-if="tasks.length === 0" class="text-center py-16">
+      <CardContent>
+        <p class="text-muted-foreground">暂无任务</p>
+      </CardContent>
+    </Card>
 
-    <div v-else class="table-container">
-      <table class="tasks-table">
-        <thead>
-          <tr>
-            <th style="width: 100px;">状态</th>
-            <th style="width: 150px;">视频ID</th>
-            <th>URL</th>
-            <th style="width: 120px;">资源</th>
-            <th style="width: 100px;">进度</th>
-            <th style="width: 160px;">创建时间</th>
-            <th style="width: 160px;">完成时间</th>
-            <th style="width: 200px;">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="task in tasks" :key="task.task_id">
-            <td>
-              <BaseBadge :variant="getStatusVariant(task.status)">
+    <!-- 任务表格 -->
+    <Card v-else>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead class="w-[100px]">状态</TableHead>
+            <TableHead class="w-[150px]">视频ID</TableHead>
+            <TableHead>URL</TableHead>
+            <TableHead class="w-[120px]">资源</TableHead>
+            <TableHead class="w-[100px]">进度</TableHead>
+            <TableHead class="w-[160px]">创建时间</TableHead>
+            <TableHead class="w-[160px]">完成时间</TableHead>
+            <TableHead class="w-[200px]">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow v-for="task in tasks" :key="task.task_id">
+            <TableCell>
+              <Badge :variant="getStatusVariant(task.status)">
                 {{ formatTaskStatus(task.status) }}
-              </BaseBadge>
-            </td>
-            <td>
-              <span class="video-id" :title="task.video_id || task.task_id">
+              </Badge>
+            </TableCell>
+            <TableCell>
+              <span class="font-mono text-xs text-muted-foreground" :title="task.video_id || task.task_id">
                 {{ task.video_id || task.task_id.slice(0, 8) }}
               </span>
-            </td>
-            <td>
-              <a :href="task.url" target="_blank" class="task-url" :title="task.url">
+            </TableCell>
+            <TableCell>
+              <a 
+                :href="task.url" 
+                target="_blank" 
+                class="text-primary hover:underline max-w-xs truncate block" 
+                :title="task.url"
+              >
                 {{ task.url }}
               </a>
-            </td>
-            <td>
-              <div class="resource-tags">
-                <BaseBadge v-if="task.download_video" variant="info" size="small">🎬 视频</BaseBadge>
-                <BaseBadge v-if="task.download_audio" variant="success" size="small">🎵 音频</BaseBadge>
-                <BaseBadge v-if="task.download_subtitles" variant="warning" size="small">📝 字幕</BaseBadge>
+            </TableCell>
+            <TableCell>
+              <div class="flex flex-wrap gap-1">
+                <Badge v-if="task.download_video" variant="info" class="text-xs">🎬</Badge>
+                <Badge v-if="task.download_audio" variant="success" class="text-xs">🎵</Badge>
+                <Badge v-if="task.download_subtitles" variant="warning" class="text-xs">📝</Badge>
               </div>
-            </td>
-            <td>
-              <div class="progress-cell">
-                <div class="progress-bar">
-                  <div 
-                    class="progress-fill" 
-                    :style="{ width: `${task.progress_percentage}%` }"
-                  ></div>
-                </div>
-                <span class="progress-text">{{ task.progress_percentage }}%</span>
+            </TableCell>
+            <TableCell>
+              <div class="flex items-center gap-2">
+                <Progress :model-value="task.progress_percentage" class="w-16" />
+                <span class="text-xs text-muted-foreground whitespace-nowrap">{{ task.progress_percentage }}%</span>
               </div>
-            </td>
-            <td>
-              <span class="time-text">{{ formatDateTime(task.created_at, 'MM-DD HH:mm') }}</span>
-            </td>
-            <td>
-              <span v-if="task.completed_at" class="time-text">
+            </TableCell>
+            <TableCell>
+              <span class="text-xs text-muted-foreground whitespace-nowrap">
+                {{ formatDateTime(task.created_at, 'MM-DD HH:mm') }}
+              </span>
+            </TableCell>
+            <TableCell>
+              <span v-if="task.completed_at" class="text-xs text-muted-foreground whitespace-nowrap">
                 {{ formatDateTime(task.completed_at, 'MM-DD HH:mm') }}
               </span>
-              <span v-else class="time-text text-muted">-</span>
-            </td>
-            <td>
-              <div class="action-buttons">
-                <BaseButton 
-                  size="small" 
-                  variant="primary" 
+              <span v-else class="text-xs text-muted-foreground">-</span>
+            </TableCell>
+            <TableCell>
+              <div class="flex gap-2">
+                <Button 
+                  size="sm" 
+                  variant="default" 
                   @click="viewTaskDetail(task)"
                 >
                   详情
-                </BaseButton>
-                <BaseButton
+                </Button>
+                <Button
                   v-if="task.status === 'failed' || task.status === 'cancelled'"
-                  size="small"
-                  variant="primary"
+                  size="sm"
+                  variant="default"
                   @click="handleRetry(task)"
                 >
                   重试
-                </BaseButton>
-                <BaseButton
-                  size="small"
-                  variant="danger"
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
                   @click="handleDelete(task)"
                 >
                   删除
-                </BaseButton>
+                </Button>
               </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
 
       <!-- 分页控件 -->
-      <div class="pagination">
-        <div class="pagination-info">
+      <div class="flex flex-col sm:flex-row justify-between items-center gap-4 p-4 border-t">
+        <div class="text-sm text-muted-foreground">
           显示 {{ offset + 1 }}-{{ Math.min(offset + limit, total) }} / 共 {{ total }} 条
         </div>
-        <div class="pagination-controls">
-          <BaseButton 
-            size="small" 
-            variant="secondary"
+        <div class="flex items-center gap-3">
+          <Button 
+            size="sm" 
+            variant="outline"
             @click="goToPage(currentPage - 1)"
             :disabled="currentPage === 1"
           >
             上一页
-          </BaseButton>
+          </Button>
           
-          <div class="page-numbers">
-            <button
+          <div class="flex gap-1">
+            <Button
               v-for="page in visiblePages"
               :key="page"
-              :class="['page-btn', { active: page === currentPage }]"
+              size="sm"
+              :variant="page === currentPage ? 'default' : 'outline'"
               @click="goToPage(page)"
+              class="min-w-[2rem]"
             >
               {{ page }}
-            </button>
+            </Button>
           </div>
           
-          <BaseButton 
-            size="small" 
-            variant="secondary"
+          <Button 
+            size="sm" 
+            variant="outline"
             @click="goToPage(currentPage + 1)"
             :disabled="currentPage === totalPages"
           >
             下一页
-          </BaseButton>
+          </Button>
         </div>
       </div>
-    </div>
+    </Card>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { BaseButton, BaseBadge, LoadingSpinner } from '@shared/ui'
+import { Button, Badge, Card, CardContent, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Progress } from '@components/ui'
+import { LoadingSpinner } from '@shared/ui'
 import { CreateTaskForm } from '@features/task-management'
 import { useTaskStore } from '@entities/task'
 import { formatDateTime, formatTaskStatus } from '@shared/lib'
@@ -251,13 +272,13 @@ function handleShowCreateForm() {
 
 function getStatusVariant(status) {
   const variants = {
-    pending: 'default',
+    pending: 'secondary',
     processing: 'info',
     completed: 'success',
-    failed: 'danger',
+    failed: 'destructive',
     cancelled: 'warning'
   }
-  return variants[status] || 'default'
+  return variants[status] || 'secondary'
 }
 
 async function loadTasks() {
@@ -368,283 +389,3 @@ onUnmounted(() => {
   window.removeEventListener('show-create-form', handleShowCreateForm)
 })
 </script>
-
-<style scoped>
-.task-list-page {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 24px;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 32px;
-}
-
-h1 {
-  margin: 0;
-  font-size: 32px;
-  font-weight: 700;
-  color: #111827;
-}
-
-.subtitle {
-  margin: 8px 0 0 0;
-  color: #6b7280;
-  font-size: 16px;
-}
-
-.create-form-section {
-  margin-bottom: 32px;
-  padding: 24px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.filters {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-  gap: 16px;
-}
-
-.filter-buttons {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.filter-btn {
-  padding: 8px 16px;
-  border: 1px solid #d1d5db;
-  background: white;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #374151;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.filter-btn:hover {
-  border-color: #3b82f6;
-  color: #3b82f6;
-}
-
-.filter-btn.active {
-  background: #3b82f6;
-  color: white;
-  border-color: #3b82f6;
-}
-
-.loading-container,
-.error-container,
-.empty-container {
-  text-align: center;
-  padding: 60px 20px;
-}
-
-.error-text {
-  color: #ef4444;
-  margin-bottom: 16px;
-  font-size: 16px;
-}
-
-.empty-text {
-  color: #6b7280;
-  font-size: 16px;
-}
-
-.table-container {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-}
-
-.tasks-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.tasks-table thead {
-  background: #f9fafb;
-  border-bottom: 2px solid #e5e7eb;
-}
-
-.tasks-table th {
-  padding: 12px 16px;
-  text-align: left;
-  font-size: 13px;
-  font-weight: 600;
-  color: #374151;
-  white-space: nowrap;
-}
-
-.tasks-table tbody tr {
-  border-bottom: 1px solid #e5e7eb;
-  transition: background 0.2s;
-}
-
-.tasks-table tbody tr:hover {
-  background: #f9fafb;
-}
-
-.tasks-table tbody tr:last-child {
-  border-bottom: none;
-}
-
-.tasks-table td {
-  padding: 12px 16px;
-  font-size: 13px;
-  color: #374151;
-}
-
-.video-id {
-  display: inline-block;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: monospace;
-  color: #6b7280;
-}
-
-.task-url {
-  display: inline-block;
-  max-width: 300px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #3b82f6;
-  text-decoration: none;
-}
-
-.task-url:hover {
-  text-decoration: underline;
-}
-
-.progress-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.progress-bar {
-  flex: 1;
-  height: 6px;
-  background: #e5e7eb;
-  border-radius: 3px;
-  overflow: hidden;
-  min-width: 40px;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #3b82f6, #2563eb);
-  transition: width 0.3s;
-}
-
-.progress-text {
-  font-size: 12px;
-  color: #6b7280;
-  white-space: nowrap;
-  min-width: 35px;
-}
-
-.time-text {
-  font-size: 12px;
-  color: #6b7280;
-  white-space: nowrap;
-}
-
-.time-text.text-muted {
-  color: #9ca3af;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 6px;
-  flex-wrap: nowrap;
-}
-
-.resource-tags {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.pagination {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-top: 1px solid #e5e7eb;
-}
-
-.pagination-info {
-  font-size: 14px;
-  color: #6b7280;
-}
-
-.pagination-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.page-numbers {
-  display: flex;
-  gap: 4px;
-}
-
-.page-btn {
-  min-width: 32px;
-  height: 32px;
-  padding: 0 8px;
-  border: 1px solid #d1d5db;
-  background: white;
-  border-radius: 4px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.page-btn:hover {
-  border-color: #3b82f6;
-  color: #3b82f6;
-}
-
-.page-btn.active {
-  background: #3b82f6;
-  color: white;
-  border-color: #3b82f6;
-}
-
-@media (max-width: 768px) {
-  .page-header {
-    flex-direction: column;
-    gap: 16px;
-  }
-  
-  .table-container {
-    overflow-x: auto;
-  }
-  
-  .tasks-table {
-    min-width: 900px;
-  }
-  
-  .pagination {
-    flex-direction: column;
-    gap: 12px;
-  }
-}
-</style>
-
