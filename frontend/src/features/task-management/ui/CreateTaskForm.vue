@@ -49,19 +49,19 @@
         <label class="text-sm font-medium">下载选项</label>
         <div class="space-y-2">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input v-model="formData.download_video" type="checkbox" class="w-4 h-4 rounded border-input" />
+            <Checkbox v-model="formData.download_video" id="download-video" />
             <span class="text-sm">下载视频</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input v-model="formData.download_audio" type="checkbox" class="w-4 h-4 rounded border-input" />
+            <Checkbox v-model="formData.download_audio" id="download-audio" />
             <span class="text-sm">下载音频</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input v-model="formData.download_subtitles" type="checkbox" class="w-4 h-4 rounded border-input" />
+            <Checkbox v-model="formData.download_subtitles" id="download-subtitles" />
             <span class="text-sm">下载字幕</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input v-model="formData.burn_subtitles" type="checkbox" class="w-4 h-4 rounded border-input" />
+            <Checkbox v-model="formData.burn_subtitles" id="burn-subtitles" />
             <span class="text-sm">字幕硬编码</span>
           </label>
         </div>
@@ -106,7 +106,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { Button, Input } from '@components/ui'
+import { Button, Input, Checkbox } from '@components/ui'
 import { useTaskStore } from '@entities/task'
 
 const props = defineProps({
@@ -142,6 +142,9 @@ async function handleSubmit() {
   error.value = null
 
   try {
+    // 调试：打印表单数据
+    console.log('表单数据:', JSON.stringify(formData.value, null, 2))
+    
     // 前端验证
     if (!formData.value.url || !formData.value.url.trim()) {
       throw new Error('请输入 YouTube URL')
