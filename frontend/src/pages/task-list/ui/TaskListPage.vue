@@ -308,59 +308,113 @@
             </CardContent>
           </Card>
 
-          <!-- 下载选项 -->
+          <!-- 下载选项与文件 -->
           <Card class="mb-4">
             <CardHeader>
-              <CardTitle class="text-lg">下载选项</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div class="flex flex-wrap gap-2">
-                <Badge v-if="selectedTask.download_video" class="text-sm bg-primary/10 text-primary border-primary/20 flex items-center gap-1.5">
-                  <VideoIcon :size="14" />
+              <div class="flex flex-wrap items-center gap-2">
+                <CardTitle class="text-lg">下载选项与文件</CardTitle>
+                <Badge v-if="selectedTask.download_video" class="text-xs bg-primary/10 text-primary border-primary/20 flex items-center gap-1 px-2 py-0.5">
+                  <VideoIcon :size="12" />
                   视频
                 </Badge>
-                <Badge v-if="selectedTask.download_audio" class="text-sm bg-secondary/10 text-secondary border-secondary/20 flex items-center gap-1.5">
-                  <AudioIcon :size="14" />
+                <Badge v-if="selectedTask.download_audio" class="text-xs bg-secondary/10 text-secondary border-secondary/20 flex items-center gap-1 px-2 py-0.5">
+                  <AudioIcon :size="12" />
                   音频
                 </Badge>
-                <Badge v-if="selectedTask.download_subtitles" class="text-sm bg-accent/10 text-accent border-accent/20 flex items-center gap-1.5">
-                  <SubtitleIcon :size="14" />
+                <Badge v-if="selectedTask.download_subtitles" class="text-xs bg-accent/10 text-accent border-accent/20 flex items-center gap-1 px-2 py-0.5">
+                  <SubtitleIcon :size="12" />
                   字幕
                 </Badge>
-                <Badge v-if="selectedTask.burn_subtitles" class="text-sm bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20 flex items-center gap-1.5">
-                  <VideoIcon :size="14" />
+                <Badge v-if="selectedTask.burn_subtitles" class="text-xs bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20 flex items-center gap-1 px-2 py-0.5">
+                  <VideoIcon :size="12" />
                   硬编码字幕
                 </Badge>
+                <span v-if="selectedTask.subtitle_langs" class="text-xs text-muted-foreground">
+                  字幕语言: <span class="font-medium">{{ selectedTask.subtitle_langs }}</span>
+                </span>
               </div>
-              <div v-if="selectedTask.subtitle_langs" class="mt-3 text-sm">
-                <span class="text-muted-foreground">字幕语言: </span>
-                <span>{{ selectedTask.subtitle_langs }}</span>
+            </CardHeader>
+            <CardContent>
+              <!-- 下载文件列表 -->
+              <div v-if="!taskDetailLoading && selectedTask.files && selectedTask.files.length > 0" class="space-y-2">
+                <h3 class="text-sm font-semibold">所有文件 ({{ selectedTask.files.length }})</h3>
+                <div class="space-y-2">
+                  <div 
+                    v-for="file in selectedTask.files" 
+                    :key="file.file_path"
+                    class="flex items-start gap-3 p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
+                  >
+                    <component :is="getFileIconComponent(file.file_type)" :size="24" class="flex-shrink-0 text-primary" />
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2 mb-1">
+                        <div class="text-sm font-medium truncate">{{ getFileName(file.file_path) }}</div>
+                        <Badge v-if="file.status" variant="secondary" class="text-xs">
+                          {{ formatFileStatus(file.status) }}
+                        </Badge>
+                      </div>
+                      <div class="flex gap-2 text-xs text-muted-foreground">
+                        <span>{{ file.file_type }}</span>
+                        <span v-if="file.file_size">{{ formatFileSize(file.file_size) }}</span>
+                      </div>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      @click="downloadFile(file)"
+                      class="flex-shrink-0 flex items-center gap-2"
+                    >
+                      <DownloadIcon :size="16" />
+                      下载
+                    </Button>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
 
           <!-- 媒体预览 -->
-          <Card v-if="!taskDetailLoading && mediaResourcesReady && (videoFile || audioFile || subtitleFile)" class="mb-4">
+          <Card v-if="!taskDetailLoading && mediaResourcesReady && (videoFiles.length > 0 || audioFile || subtitleFile)" class="mb-4">
             <CardHeader>
               <CardTitle class="text-lg">媒体预览</CardTitle>
             </CardHeader>
             <CardContent class="space-y-6">
-              <!-- 视频播放器 -->
-              <div v-if="videoFile" class="space-y-3">
-                <h3 class="text-sm font-semibold">视频预览</h3>
-                <video 
-                  :src="`/api/tasks/${selectedTask.task_id}/files/${videoFile.file_type}`"
-                  controls
-                  class="w-full max-h-[300px] rounded-lg bg-black"
-                  controlsList="nodownload"
+              <!-- 视频播放器 - 支持多个视频 -->
+              <div v-if="videoFiles.length > 0" class="space-y-4">
+                <div 
+                  v-for="(file, index) in videoFiles" 
+                  :key="file.file_id"
+                  class="space-y-2"
+                  :class="{ 'pt-4 border-t': index > 0 }"
                 >
-                  您的浏览器不支持视频播放。
-                </video>
+                  <div class="flex items-center gap-2">
+                    <h3 class="text-sm font-semibold">视频预览</h3>
+                    <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                      <VideoIcon :size="14" />
+                      <span class="font-medium text-xs">{{ file.file_name }}</span>
+                      <Badge variant="secondary" class="text-xs">{{ file.file_type }}</Badge>
+                    </div>
+                  </div>
+                  <video 
+                    :src="`/api/tasks/${selectedTask.task_id}/files/${file.file_type}`"
+                    :data-file-id="file.file_id"
+                    controls
+                    class="w-full max-h-[300px] rounded-lg bg-black"
+                    controlsList="nodownload"
+                  >
+                    您的浏览器不支持视频播放。
+                  </video>
+                </div>
               </div>
 
               <!-- 音频播放器 -->
-              <div v-if="audioFile" class="space-y-3" :class="{ 'border-t pt-6': videoFile }">
-                <h3 class="text-sm font-semibold">音频预览</h3>
+              <div v-if="audioFile" class="space-y-3" :class="{ 'border-t pt-6': videoFiles.length > 0 }">
+                <div class="flex items-center gap-2">
+                  <h3 class="text-sm font-semibold">音频预览</h3>
+                  <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                    <AudioIcon :size="14" />
+                    <span class="font-medium text-xs">{{ audioFile.file_name }}</span>
+                  </div>
+                </div>
                 <audio 
                   :src="`/api/tasks/${selectedTask.task_id}/files/${audioFile.file_type}`"
                   controls
@@ -372,9 +426,15 @@
               </div>
 
               <!-- 字幕查看器 -->
-              <div v-if="subtitleFile" class="space-y-2" :class="{ 'border-t pt-4': videoFile || audioFile }">
+              <div v-if="subtitleFile" class="space-y-2" :class="{ 'border-t pt-4': videoFiles.length > 0 || audioFile }">
                 <div class="flex justify-between items-center">
-                  <h3 class="text-sm font-semibold">字幕内容</h3>
+                  <div class="flex items-center gap-2">
+                    <h3 class="text-sm font-semibold">字幕内容</h3>
+                    <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                      <SubtitleIcon :size="14" />
+                      <span class="font-medium text-xs">{{ subtitleFile.file_name }}</span>
+                    </div>
+                  </div>
                   <div class="flex gap-2">
                     <Button 
                       size="sm" 
@@ -436,45 +496,6 @@
             </CardContent>
           </Card>
 
-          <!-- 下载文件 -->
-          <Card v-if="!taskDetailLoading && selectedTask.files && selectedTask.files.length > 0">
-            <CardHeader>
-              <CardTitle class="text-lg">下载文件</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div class="space-y-2">
-                <div 
-                  v-for="file in selectedTask.files" 
-                  :key="file.file_path"
-                  class="flex items-start gap-3 p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
-                >
-                  <component :is="getFileIconComponent(file.file_type)" :size="24" class="flex-shrink-0 text-primary" />
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 mb-1">
-                      <div class="text-sm font-medium truncate">{{ getFileName(file.file_path) }}</div>
-                      <Badge v-if="file.status" variant="secondary" class="text-xs">
-                        {{ formatFileStatus(file.status) }}
-                      </Badge>
-                    </div>
-                    <div class="flex gap-2 text-xs text-muted-foreground">
-                      <span>{{ file.file_type }}</span>
-                      <span v-if="file.file_size">{{ formatFileSize(file.file_size) }}</span>
-                    </div>
-                  </div>
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    @click="downloadFile(file)"
-                    class="flex-shrink-0 flex items-center gap-2"
-                  >
-                    <DownloadIcon :size="16" />
-                    下载
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
           <!-- 任务操作 -->
           <Card class="sticky bottom-0 bg-background/95 backdrop-blur">
             <CardContent class="p-4">
@@ -521,9 +542,9 @@ const mediaResourcesReady = ref(false) // 控制媒体资源是否可以加载
 let autoRefreshInterval = null
 
 // 找到不同类型的文件
-const videoFile = computed(() => {
-  if (!selectedTask.value?.files) return null
-  return selectedTask.value.files.find(f => 
+const videoFiles = computed(() => {
+  if (!selectedTask.value?.files) return []
+  return selectedTask.value.files.filter(f => 
     f.file_type === 'video_with_subs' || f.file_type === 'video'
   )
 })

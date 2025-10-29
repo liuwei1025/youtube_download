@@ -106,28 +106,72 @@
         </CardFooter>
       </Card>
 
-      <!-- 文件卡片 -->
+      <!-- 下载选项与文件卡片 -->
       <Card v-if="task.files && task.files.length > 0">
         <CardHeader>
-          <CardTitle>下载文件 ({{ task.files.length }})</CardTitle>
+          <div class="flex flex-wrap items-center gap-2">
+            <CardTitle>下载选项与文件</CardTitle>
+            <Badge v-if="task.download_video" class="text-xs bg-primary/10 text-primary border-primary/20 flex items-center gap-1 px-2 py-0.5">
+              <VideoIcon :size="12" />
+              视频
+            </Badge>
+            <Badge v-if="task.download_audio" class="text-xs bg-secondary/10 text-secondary border-secondary/20 flex items-center gap-1 px-2 py-0.5">
+              <AudioIcon :size="12" />
+              音频
+            </Badge>
+            <Badge v-if="task.download_subtitles" class="text-xs bg-accent/10 text-accent border-accent/20 flex items-center gap-1 px-2 py-0.5">
+              <SubtitleIcon :size="12" />
+              字幕
+            </Badge>
+            <Badge v-if="task.burn_subtitles" class="text-xs bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20 flex items-center gap-1 px-2 py-0.5">
+              <VideoIcon :size="12" />
+              硬编码字幕
+            </Badge>
+            <span v-if="task.subtitle_langs" class="text-xs text-muted-foreground">
+              字幕语言: <span class="font-medium">{{ task.subtitle_langs }}</span>
+            </span>
+          </div>
         </CardHeader>
         <CardContent class="space-y-6">
-          <!-- 视频播放器 -->
-          <div v-if="videoFile" class="space-y-3">
-            <h3 class="text-base font-semibold">视频预览</h3>
-            <video 
-              :src="`/api/tasks/${task.task_id}/files/${videoFile.file_type}`"
-              controls
-              class="w-full max-h-[500px] rounded-lg bg-black"
-              controlsList="nodownload"
+          <!-- 视频播放器 - 支持多个视频 -->
+          <div v-if="videoFiles.length > 0" class="space-y-4">
+            <div 
+              v-for="(file, index) in videoFiles" 
+              :key="file.file_id"
+              class="space-y-2"
+              :class="{ 'pt-4 border-t': index > 0 }"
             >
-              您的浏览器不支持视频播放。
-            </video>
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <h3 class="text-base font-semibold">视频预览</h3>
+                  <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                    <VideoIcon :size="16" />
+                    <span class="font-medium">{{ file.file_name }}</span>
+                    <Badge variant="info" class="text-xs">{{ formatFileType(file.file_type) }}</Badge>
+                  </div>
+                </div>
+              </div>
+              <video 
+                :src="`/api/tasks/${task.task_id}/files/${file.file_type}`"
+                :data-file-id="file.file_id"
+                controls
+                class="w-full max-h-[500px] rounded-lg bg-black"
+                controlsList="nodownload"
+              >
+                您的浏览器不支持视频播放。
+              </video>
+            </div>
           </div>
 
           <!-- 音频播放器 -->
-          <div v-if="audioFile" class="space-y-3" :class="{ 'border-t pt-6': videoFile }">
-            <h3 class="text-base font-semibold">音频预览</h3>
+          <div v-if="audioFile" class="space-y-3 border-t pt-6">
+            <div class="flex items-center gap-2">
+              <h3 class="text-base font-semibold">音频预览</h3>
+              <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                <AudioIcon :size="16" />
+                <span class="font-medium">{{ audioFile.file_name }}</span>
+              </div>
+            </div>
             <audio 
               :src="`/api/tasks/${task.task_id}/files/${audioFile.file_type}`"
               controls
@@ -141,7 +185,13 @@
           <!-- 字幕查看器 -->
           <div v-if="task.download_subtitles" class="space-y-3 border-t pt-6">
             <div class="flex justify-between items-center">
-              <h3 class="text-base font-semibold">字幕内容</h3>
+              <div class="flex items-center gap-2">
+                <h3 class="text-base font-semibold">字幕内容</h3>
+                <div v-if="subtitleFile" class="flex items-center gap-2 text-sm text-muted-foreground">
+                  <SubtitleIcon :size="16" />
+                  <span class="font-medium">{{ subtitleFile.file_name }}</span>
+                </div>
+              </div>
               <Button 
                 v-if="subtitleFile" 
                 size="sm" 
@@ -181,15 +231,15 @@
 
           <!-- 文件列表 -->
           <div class="space-y-3 border-t pt-6">
-            <h3 class="text-base font-semibold">所有文件</h3>
-            <div class="space-y-3">
+            <h3 class="text-base font-semibold">所有文件 ({{ task.files.length }})</h3>
+            <div class="grid grid-cols-1 gap-3">
               <div 
                 v-for="file in task.files" 
                 :key="file.file_id" 
                 class="p-4 bg-muted hover:bg-muted/80 rounded-lg transition-colors"
               >
                 <div class="flex items-start gap-4">
-                  <component :is="getFileIconComponent(file.file_type)" :size="28" class="text-primary" />
+                  <component :is="getFileIconComponent(file.file_type)" :size="28" class="text-primary flex-shrink-0" />
                   <div class="flex-1 min-w-0">
                     <div class="flex flex-wrap items-center gap-2 mb-1">
                       <span class="font-medium text-sm truncate">{{ file.file_name }}</span>
@@ -229,7 +279,7 @@
                         v-if="canPreview(file.file_type)" 
                         variant="outline" 
                         size="sm"
-                        @click="scrollToPreview(file.file_type)"
+                        @click="scrollToPreview(file.file_type, file.file_id)"
                       >
                         预览
                       </Button>
@@ -327,9 +377,9 @@ let autoRefreshInterval = null
 const task = computed(() => taskStore.currentTask)
 
 // 找到不同类型的文件
-const videoFile = computed(() => {
-  if (!task.value?.files) return null
-  return task.value.files.find(f => 
+const videoFiles = computed(() => {
+  if (!task.value?.files) return []
+  return task.value.files.filter(f => 
     f.file_type === 'video_with_subs' || f.file_type === 'video'
   )
 })
@@ -393,30 +443,45 @@ function canPreview(fileType) {
   return ['video', 'video_with_subs', 'audio', 'subtitles'].includes(fileType)
 }
 
-function scrollToPreview(fileType) {
-  let selector = ''
+function scrollToPreview(fileType, fileId) {
+  let element = null
+  
   if (fileType === 'video' || fileType === 'video_with_subs') {
-    selector = 'video'
+    // 使用 data-file-id 属性精确定位视频元素
+    if (fileId) {
+      element = document.querySelector(`video[data-file-id="${fileId}"]`)
+    }
+    // 如果没有找到特定的视频，使用第一个视频元素
+    if (!element) {
+      element = document.querySelector('video')
+    }
   } else if (fileType === 'audio') {
-    selector = 'audio'
+    element = document.querySelector('audio')
   } else if (fileType === 'subtitles') {
-    selector = '.subtitle-viewer-section'
+    // 滚动到字幕区域
+    const subtitleSection = document.querySelector('.subtitle-viewer-section')
+    if (subtitleSection) {
+      element = subtitleSection
+    } else {
+      // 如果没有找到特定的字幕区域，找到包含字幕的父容器
+      const subtitleContainer = Array.from(document.querySelectorAll('h3'))
+        .find(h3 => h3.textContent.includes('字幕内容'))
+      if (subtitleContainer) {
+        element = subtitleContainer.parentElement
+      }
+    }
   }
   
-  if (selector) {
-    const element = document.querySelector(selector)
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      // 如果是音频或视频，尝试播放
-      if (fileType === 'audio' || fileType === 'video' || fileType === 'video_with_subs') {
-        setTimeout(() => {
-          if (element.tagName === 'VIDEO' || element.tagName === 'AUDIO') {
-            element.play().catch(err => {
-              console.log('自动播放被阻止:', err)
-            })
-          }
-        }, 500)
-      }
+  if (element) {
+    element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // 如果是音频或视频，尝试播放
+    if ((fileType === 'audio' || fileType === 'video' || fileType === 'video_with_subs') && 
+        (element.tagName === 'VIDEO' || element.tagName === 'AUDIO')) {
+      setTimeout(() => {
+        element.play().catch(err => {
+          console.log('自动播放被阻止:', err)
+        })
+      }, 500)
     }
   }
 }

@@ -149,12 +149,12 @@ def process_single_url(config: DownloadConfig) -> Optional[dict]:
         # 检查是否已经存在
         if os.path.exists(output_with_subs) and os.path.getsize(output_with_subs) > 0:
             logger.info(f"✅ 带字幕的视频已存在: {os.path.basename(output_with_subs)}")
-            results['video_with_subtitles'] = output_with_subs
+            results['video_with_subs'] = output_with_subs
         else:
             # 执行字幕烧录
             burned_video = burn_subtitles_to_video(video_path, subtitle_path, output_with_subs)
             if burned_video:
-                results['video_with_subtitles'] = burned_video
+                results['video_with_subs'] = burned_video
             else:
                 logger.warning("字幕烧录失败，保留原始视频文件")
     
