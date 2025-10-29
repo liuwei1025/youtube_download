@@ -7,7 +7,7 @@ import logging
 import threading
 from typing import Optional, List
 
-from ..models import FileType
+from src.models import FileType
 from .config import DownloadConfig
 from .utils import extract_video_id, setup_proxy
 from .thread_manager import ThreadPoolManager, ThreadSafeProgress
