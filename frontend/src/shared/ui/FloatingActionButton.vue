@@ -5,12 +5,14 @@
     @click="$emit('click', $event)"
   >
     <slot>
-      <span class="fab-icon">+</span>
+      <PlusIcon :size="32" class="fab-icon" />
     </slot>
   </button>
 </template>
 
 <script setup>
+import { PlusIcon } from '@components/ui'
+
 defineProps({
   hidden: {
     type: Boolean,
@@ -63,9 +65,9 @@ defineEmits(['click'])
 }
 
 .fab-icon {
-  font-size: 32px;
-  font-weight: 300;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 响应式设计 */
@@ -77,9 +79,6 @@ defineEmits(['click'])
     height: 56px;
   }
   
-  .fab-icon {
-    font-size: 28px;
-  }
 }
 
 /* 添加脉冲动画提示 */

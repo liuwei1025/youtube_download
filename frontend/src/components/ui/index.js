@@ -5,4 +5,6 @@ export * from './table'
 export * from './input'
 export * from './progress'
 export * from './checkbox'
+export * from './drawer'
+export * from './icons'
 

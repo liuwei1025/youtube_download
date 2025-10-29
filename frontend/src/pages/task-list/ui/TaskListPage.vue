@@ -1,65 +1,87 @@
 <template>
   <div class="container mx-auto px-6 py-8 max-w-7xl">
-    <!-- 页面标题 -->
-    <div class="mb-8">
-      <h1 class="text-3xl font-bold text-foreground">任务管理</h1>
-      <p class="text-muted-foreground mt-2">YouTube 视频下载任务</p>
-    </div>
+    <!-- 创建任务 Drawer -->
+    <Drawer v-model:open="showCreateForm" direction="right">
+      <DrawerContent class="h-full w-full sm:w-[600px]">
+        <DrawerHeader>
+          <DrawerTitle>创建下载任务</DrawerTitle>
+          <DrawerDescription>填写 YouTube 视频信息和下载选项</DrawerDescription>
+        </DrawerHeader>
+        
+        <div class="overflow-y-auto flex-1 px-6 pb-6">
+          <CreateTaskForm 
+            :on-success="handleTaskCreated"
+            :on-cancel="() => showCreateForm = false"
+          />
+        </div>
+      </DrawerContent>
+    </Drawer>
 
-    <!-- 创建任务表单 -->
-    <Card v-if="showCreateForm" class="mb-8">
-      <CardContent class="p-6">
-        <CreateTaskForm 
-          :on-success="handleTaskCreated"
-          :on-cancel="() => showCreateForm = false"
-        />
+    <!-- 过滤器和操作 -->
+    <Card class="mb-6 border-primary/20">
+      <CardContent class="p-4">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div class="flex flex-wrap gap-2">
+            <Button
+              :variant="currentFilter === null ? 'default' : 'outline'"
+              size="sm"
+              @click="setFilter(null)"
+              class="flex items-center gap-2"
+            >
+              <ListIcon :size="16" />
+              全部
+            </Button>
+            <Button
+              :variant="currentFilter === 'pending' ? 'default' : 'outline'"
+              size="sm"
+              @click="setFilter('pending')"
+              class="flex items-center gap-2"
+            >
+              <ClockIcon :size="16" />
+              等待中
+            </Button>
+            <Button
+              :variant="currentFilter === 'processing' ? 'default' : 'outline'"
+              size="sm"
+              @click="setFilter('processing')"
+              class="flex items-center gap-2"
+            >
+              <SettingsIcon :size="16" />
+              处理中
+            </Button>
+            <Button
+              :variant="currentFilter === 'completed' ? 'default' : 'outline'"
+              size="sm"
+              @click="setFilter('completed')"
+              class="flex items-center gap-2"
+            >
+              <CheckIcon :size="16" />
+              已完成
+            </Button>
+            <Button
+              :variant="currentFilter === 'failed' ? 'default' : 'outline'"
+              size="sm"
+              @click="setFilter('failed')"
+              class="flex items-center gap-2"
+            >
+              <XIcon :size="16" />
+              失败
+            </Button>
+          </div>
+          
+          <div class="flex gap-2">
+            <Button size="sm" variant="outline" @click="loadTasks" class="flex items-center gap-2">
+              <RefreshIcon :size="16" />
+              刷新
+            </Button>
+            <Button size="sm" variant="default" @click="showCreateForm = true" class="flex items-center gap-2">
+              <PlusIcon :size="16" />
+              新建任务
+            </Button>
+          </div>
+        </div>
       </CardContent>
     </Card>
-
-    <!-- 过滤器 -->
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-      <div class="flex flex-wrap gap-2">
-        <Button
-          :variant="currentFilter === null ? 'default' : 'outline'"
-          size="sm"
-          @click="setFilter(null)"
-        >
-          全部 ({{ total }})
-        </Button>
-        <Button
-          :variant="currentFilter === 'pending' ? 'default' : 'outline'"
-          size="sm"
-          @click="setFilter('pending')"
-        >
-          等待中
-        </Button>
-        <Button
-          :variant="currentFilter === 'processing' ? 'default' : 'outline'"
-          size="sm"
-          @click="setFilter('processing')"
-        >
-          处理中
-        </Button>
-        <Button
-          :variant="currentFilter === 'completed' ? 'default' : 'outline'"
-          size="sm"
-          @click="setFilter('completed')"
-        >
-          已完成
-        </Button>
-        <Button
-          :variant="currentFilter === 'failed' ? 'default' : 'outline'"
-          size="sm"
-          @click="setFilter('failed')"
-        >
-          失败
-        </Button>
-      </div>
-      
-      <Button size="sm" variant="outline" @click="loadTasks">
-        刷新
-      </Button>
-    </div>
 
     <!-- 加载状态 -->
     <div v-if="loading" class="text-center py-16">
@@ -98,7 +120,7 @@
         <TableBody>
           <TableRow v-for="task in tasks" :key="task.task_id">
             <TableCell>
-              <Badge :variant="getStatusVariant(task.status)">
+              <Badge :class="getStatusColor(task.status)">
                 {{ formatTaskStatus(task.status) }}
               </Badge>
             </TableCell>
@@ -113,10 +135,10 @@
               </a>
             </TableCell>
             <TableCell>
-              <div class="flex flex-wrap gap-1">
-                <Badge v-if="task.download_video" variant="info" class="text-xs">🎬</Badge>
-                <Badge v-if="task.download_audio" variant="success" class="text-xs">🎵</Badge>
-                <Badge v-if="task.download_subtitles" variant="warning" class="text-xs">📝</Badge>
+              <div class="flex gap-2 whitespace-nowrap">
+                <VideoIcon v-if="task.download_video" :size="18" class="text-primary" title="视频" />
+                <AudioIcon v-if="task.download_audio" :size="18" class="text-secondary" title="音频" />
+                <SubtitleIcon v-if="task.download_subtitles" :size="18" class="text-accent" title="字幕" />
               </div>
             </TableCell>
             <TableCell>
@@ -140,22 +162,23 @@
               <div class="flex gap-2">
                 <Button 
                   size="sm" 
-                  variant="default" 
+                  variant="outline" 
                   @click="viewTaskDetail(task)"
                 >
-                  详情
+                  查看
                 </Button>
                 <Button
                   v-if="task.status === 'failed' || task.status === 'cancelled'"
                   size="sm"
-                  variant="default"
+                  variant="secondary"
                   @click="handleRetry(task)"
                 >
                   重试
                 </Button>
                 <Button
                   size="sm"
-                  variant="destructive"
+                  variant="ghost"
+                  class="text-destructive hover:text-destructive hover:bg-destructive/10"
                   @click="handleDelete(task)"
                 >
                   删除
@@ -205,17 +228,276 @@
         </div>
       </div>
     </Card>
+
+    <!-- 任务详情 Drawer -->
+    <Drawer v-model:open="drawerOpen" direction="right">
+      <DrawerContent class="h-full w-full sm:w-[600px]">
+        <DrawerHeader>
+          <DrawerTitle>任务详情</DrawerTitle>
+          <DrawerDescription v-if="selectedTask">
+            任务 ID: {{ selectedTask.task_id }}
+          </DrawerDescription>
+        </DrawerHeader>
+        
+        <div v-if="selectedTask" class="overflow-y-auto flex-1 px-6 pb-6">
+          <!-- 基本信息卡片 -->
+          <Card class="mb-4">
+            <CardHeader>
+              <div class="flex justify-between items-start">
+                <CardTitle class="text-lg">基本信息</CardTitle>
+                <Badge :class="getStatusColor(selectedTask.status)">
+                  {{ formatTaskStatus(selectedTask.status) }}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent class="space-y-3">
+              <div class="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div class="text-muted-foreground mb-1">任务ID</div>
+                  <div class="font-mono">{{ selectedTask.task_id }}</div>
+                </div>
+                <div v-if="selectedTask.video_id">
+                  <div class="text-muted-foreground mb-1">视频ID</div>
+                  <div class="font-mono">{{ selectedTask.video_id }}</div>
+                </div>
+              </div>
+              
+              <div class="text-sm">
+                <div class="text-muted-foreground mb-1">视频URL</div>
+                <a :href="selectedTask.url" target="_blank" class="text-primary hover:underline break-all text-xs">
+                  {{ selectedTask.url }}
+                </a>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div class="text-muted-foreground mb-1">创建时间</div>
+                  <div class="text-xs">{{ formatDateTime(selectedTask.created_at) }}</div>
+                </div>
+                <div v-if="selectedTask.completed_at">
+                  <div class="text-muted-foreground mb-1">完成时间</div>
+                  <div class="text-xs">{{ formatDateTime(selectedTask.completed_at) }}</div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 text-sm">
+                <div v-if="selectedTask.start_time">
+                  <div class="text-muted-foreground mb-1">片段开始</div>
+                  <div>{{ selectedTask.start_time }}</div>
+                </div>
+                <div v-if="selectedTask.end_time">
+                  <div class="text-muted-foreground mb-1">片段结束</div>
+                  <div>{{ selectedTask.end_time }}</div>
+                </div>
+              </div>
+
+              <!-- 进度条（仅在处理中时显示） -->
+              <div v-if="selectedTask.progress && selectedTask.status !== 'completed'" class="space-y-2 p-3 bg-muted/50 rounded-lg">
+                <div class="flex justify-between text-sm">
+                  <span class="text-muted-foreground">{{ selectedTask.progress }}</span>
+                  <span class="font-semibold text-primary">{{ selectedTask.progress_percentage }}%</span>
+                </div>
+                <Progress :model-value="selectedTask.progress_percentage" />
+              </div>
+
+              <!-- 错误信息 -->
+              <div v-if="selectedTask.error_message" class="space-y-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
+                <h3 class="text-sm font-semibold text-destructive">错误信息</h3>
+                <p class="text-sm text-destructive">{{ selectedTask.error_message }}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <!-- 下载选项 -->
+          <Card class="mb-4">
+            <CardHeader>
+              <CardTitle class="text-lg">下载选项</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div class="flex flex-wrap gap-2">
+                <Badge v-if="selectedTask.download_video" class="text-sm bg-primary/10 text-primary border-primary/20 flex items-center gap-1.5">
+                  <VideoIcon :size="14" />
+                  视频
+                </Badge>
+                <Badge v-if="selectedTask.download_audio" class="text-sm bg-secondary/10 text-secondary border-secondary/20 flex items-center gap-1.5">
+                  <AudioIcon :size="14" />
+                  音频
+                </Badge>
+                <Badge v-if="selectedTask.download_subtitles" class="text-sm bg-accent/10 text-accent border-accent/20 flex items-center gap-1.5">
+                  <SubtitleIcon :size="14" />
+                  字幕
+                </Badge>
+                <Badge v-if="selectedTask.burn_subtitles" class="text-sm bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20 flex items-center gap-1.5">
+                  <VideoIcon :size="14" />
+                  硬编码字幕
+                </Badge>
+              </div>
+              <div v-if="selectedTask.subtitle_langs" class="mt-3 text-sm">
+                <span class="text-muted-foreground">字幕语言: </span>
+                <span>{{ selectedTask.subtitle_langs }}</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <!-- 媒体预览 -->
+          <Card v-if="!taskDetailLoading && mediaResourcesReady && (videoFile || audioFile || subtitleFile)" class="mb-4">
+            <CardHeader>
+              <CardTitle class="text-lg">媒体预览</CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-6">
+              <!-- 视频播放器 -->
+              <div v-if="videoFile" class="space-y-3">
+                <h3 class="text-sm font-semibold">视频预览</h3>
+                <video 
+                  :src="`/api/tasks/${selectedTask.task_id}/files/${videoFile.file_type}`"
+                  controls
+                  class="w-full max-h-[300px] rounded-lg bg-black"
+                  controlsList="nodownload"
+                >
+                  您的浏览器不支持视频播放。
+                </video>
+              </div>
+
+              <!-- 音频播放器 -->
+              <div v-if="audioFile" class="space-y-3" :class="{ 'border-t pt-6': videoFile }">
+                <h3 class="text-sm font-semibold">音频预览</h3>
+                <audio 
+                  :src="`/api/tasks/${selectedTask.task_id}/files/${audioFile.file_type}`"
+                  controls
+                  class="w-full"
+                  controlsList="nodownload"
+                >
+                  您的浏览器不支持音频播放。
+                </audio>
+              </div>
+
+              <!-- 字幕查看器 -->
+              <div v-if="subtitleFile" class="space-y-2" :class="{ 'border-t pt-4': videoFile || audioFile }">
+                <div class="flex justify-between items-center">
+                  <h3 class="text-sm font-semibold">字幕内容</h3>
+                  <div class="flex gap-2">
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      @click="copyAllSubtitles"
+                      :disabled="subtitles.length === 0"
+                    >
+                      复制全部
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      @click="loadSubtitles"
+                      :disabled="subtitlesLoading"
+                    >
+                      {{ subtitlesLoading ? '加载中...' : '刷新字幕' }}
+                    </Button>
+                  </div>
+                </div>
+                
+                <div v-if="subtitlesLoading" class="text-center py-6">
+                  <LoadingSpinner text="加载字幕中..." />
+                </div>
+                
+                <div v-else-if="subtitles.length > 0" class="max-h-64 overflow-y-auto border rounded-lg bg-muted/30">
+                  <div 
+                    v-for="(subtitle, index) in subtitles" 
+                    :key="index"
+                    class="group p-2 border-b last:border-b-0 hover:bg-muted/50 transition-colors"
+                  >
+                    <div class="flex justify-between items-start gap-2">
+                      <div class="flex-1">
+                        <div class="text-xs font-semibold text-primary font-mono mb-1">{{ subtitle.time }}</div>
+                        <div class="text-sm whitespace-pre-wrap">{{ subtitle.text }}</div>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        class="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                        @click="copySubtitle(subtitle.text)"
+                      >
+                        复制
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                
+                <div v-else class="text-center py-6 text-sm text-muted-foreground">
+                  点击"刷新字幕"加载字幕内容
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <!-- 加载状态 -->
+          <Card v-if="taskDetailLoading" class="mb-4">
+            <CardContent class="py-10 text-center">
+              <LoadingSpinner text="加载任务详情..." />
+            </CardContent>
+          </Card>
+
+          <!-- 下载文件 -->
+          <Card v-if="!taskDetailLoading && selectedTask.files && selectedTask.files.length > 0">
+            <CardHeader>
+              <CardTitle class="text-lg">下载文件</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div class="space-y-2">
+                <div 
+                  v-for="file in selectedTask.files" 
+                  :key="file.file_path"
+                  class="flex items-start gap-3 p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
+                >
+                  <component :is="getFileIconComponent(file.file_type)" :size="24" class="flex-shrink-0 text-primary" />
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                      <div class="text-sm font-medium truncate">{{ getFileName(file.file_path) }}</div>
+                      <Badge v-if="file.status" variant="secondary" class="text-xs">
+                        {{ formatFileStatus(file.status) }}
+                      </Badge>
+                    </div>
+                    <div class="flex gap-2 text-xs text-muted-foreground">
+                      <span>{{ file.file_type }}</span>
+                      <span v-if="file.file_size">{{ formatFileSize(file.file_size) }}</span>
+                    </div>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    @click="downloadFile(file)"
+                    class="flex-shrink-0 flex items-center gap-2"
+                  >
+                    <DownloadIcon :size="16" />
+                    下载
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <!-- 任务操作 -->
+          <Card class="sticky bottom-0 bg-background/95 backdrop-blur">
+            <CardContent class="p-4">
+              <div class="flex justify-between items-center">
+                <span class="text-sm text-muted-foreground">任务操作</span>
+                <TaskActions :task="selectedTask" :on-success="handleTaskAction" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </DrawerContent>
+    </Drawer>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Button, Badge, Card, CardContent, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Progress } from '@components/ui'
+import { Button, Badge, Card, CardContent, CardHeader, CardTitle, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Progress, Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, VideoIcon, AudioIcon, SubtitleIcon, DownloadIcon, RefreshIcon, PlusIcon, CheckIcon, XIcon, ClockIcon, SettingsIcon, ListIcon } from '@components/ui'
 import { LoadingSpinner } from '@shared/ui'
-import { CreateTaskForm } from '@features/task-management'
+import { CreateTaskForm, TaskActions } from '@features/task-management'
 import { useTaskStore } from '@entities/task'
-import { formatDateTime, formatTaskStatus } from '@shared/lib'
+import { formatDateTime, formatTaskStatus, formatFileSize } from '@shared/lib'
 import { tasksApi } from '@shared/api'
 
 const router = useRouter()
@@ -230,7 +512,49 @@ const limit = ref(10)
 const offset = ref(0)
 const loading = ref(false)
 const error = ref(null)
+const drawerOpen = ref(false)
+const selectedTask = ref(null)
+const taskDetailLoading = ref(false)
+const subtitles = ref([])
+const subtitlesLoading = ref(false)
+const mediaResourcesReady = ref(false) // 控制媒体资源是否可以加载
 let autoRefreshInterval = null
+
+// 找到不同类型的文件
+const videoFile = computed(() => {
+  if (!selectedTask.value?.files) return null
+  return selectedTask.value.files.find(f => 
+    f.file_type === 'video_with_subs' || f.file_type === 'video'
+  )
+})
+
+const audioFile = computed(() => {
+  if (!selectedTask.value?.files) return null
+  return selectedTask.value.files.find(f => f.file_type === 'audio')
+})
+
+const subtitleFile = computed(() => {
+  if (!selectedTask.value?.files) return null
+  return selectedTask.value.files.find(f => f.file_type === 'subtitles')
+})
+
+// 监听 Drawer 打开状态,延迟加载媒体资源
+watch(drawerOpen, async (isOpen) => {
+  if (isOpen) {
+    // Drawer 打开时,延迟一段时间后再加载媒体资源,避免渲染冲突
+    mediaResourcesReady.value = false
+    await nextTick()
+    // 等待 Drawer 动画完成 (通常为 300-500ms)
+    setTimeout(() => {
+      if (drawerOpen.value) { // 确保 Drawer 仍然是打开状态
+        mediaResourcesReady.value = true
+      }
+    }, 400)
+  } else {
+    // Drawer 关闭时,立即重置状态
+    mediaResourcesReady.value = false
+  }
+})
 
 // 分页计算
 const currentPage = computed(() => Math.floor(offset.value / limit.value) + 1)
@@ -267,12 +591,143 @@ function handleShowCreateForm() {
 function getStatusVariant(status) {
   const variants = {
     pending: 'secondary',
-    processing: 'info',
-    completed: 'success',
+    processing: 'default',
+    completed: 'default',
     failed: 'destructive',
-    cancelled: 'warning'
+    cancelled: 'secondary'
   }
   return variants[status] || 'secondary'
+}
+
+function getStatusColor(status) {
+  const colors = {
+    pending: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20',
+    processing: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20',
+    completed: 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20',
+    failed: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20',
+    cancelled: 'bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/20'
+  }
+  return colors[status] || 'bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/20'
+}
+
+function getFileName(filePath) {
+  return filePath ? filePath.split('/').pop() : ''
+}
+
+function downloadFile(file) {
+  const baseUrl = import.meta.env.VITE_API_URL || ''
+  const url = `${baseUrl}/api/download/${encodeURIComponent(file.file_path)}`
+  window.open(url, '_blank')
+}
+
+function getFileIconComponent(fileType) {
+  const iconMap = {
+    video: VideoIcon,
+    video_with_subs: VideoIcon,
+    audio: AudioIcon,
+    subtitles: SubtitleIcon
+  }
+  return iconMap[fileType] || VideoIcon
+}
+
+function formatFileStatus(status) {
+  const labels = {
+    pending: '等待中',
+    processing: '下载中',
+    completed: '已完成',
+    failed: '失败'
+  }
+  return labels[status] || status
+}
+
+// 解析VTT字幕格式
+function parseVTT(vttContent) {
+  const lines = vttContent.split('\n')
+  const result = []
+  let currentSubtitle = null
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+    
+    if (!line || line.startsWith('WEBVTT') || line.startsWith('NOTE')) {
+      continue
+    }
+    
+    if (line.includes('-->')) {
+      const timeMatch = line.match(/(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})/)
+      if (timeMatch) {
+        if (currentSubtitle) {
+          result.push(currentSubtitle)
+        }
+        currentSubtitle = {
+          time: `${timeMatch[1]} --> ${timeMatch[2]}`,
+          text: ''
+        }
+      }
+    } else if (currentSubtitle) {
+      if (currentSubtitle.text) {
+        currentSubtitle.text += '\n' + line
+      } else {
+        currentSubtitle.text = line
+      }
+    }
+  }
+  
+  if (currentSubtitle) {
+    result.push(currentSubtitle)
+  }
+  
+  return result
+}
+
+async function loadSubtitles() {
+  if (!subtitleFile.value || !selectedTask.value) return
+  
+  subtitlesLoading.value = true
+  try {
+    const content = await tasksApi.getFileContent(
+      selectedTask.value.task_id, 
+      subtitleFile.value.file_type
+    )
+    subtitles.value = parseVTT(content)
+  } catch (err) {
+    console.error('Failed to load subtitles:', err)
+    subtitles.value = []
+  } finally {
+    subtitlesLoading.value = false
+  }
+}
+
+function copySubtitle(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    // 可以添加一个提示
+    console.log('字幕已复制')
+  }).catch(err => {
+    console.error('复制失败:', err)
+  })
+}
+
+function copyAllSubtitles() {
+  if (subtitles.value.length === 0) return
+  
+  const allText = subtitles.value.map(s => `${s.time}\n${s.text}`).join('\n\n')
+  navigator.clipboard.writeText(allText).then(() => {
+    alert('所有字幕已复制到剪贴板')
+  }).catch(err => {
+    console.error('复制失败:', err)
+    alert('复制失败，请手动复制')
+  })
+}
+
+function handleTaskAction(action) {
+  // 关闭 drawer
+  drawerOpen.value = false
+  selectedTask.value = null
+  
+  // 刷新任务列表
+  if (action === 'deleted' || action === 'retried' || action === 'regenerated') {
+    loadTasks()
+  }
 }
 
 function getVideoIdFromTask(task) {
@@ -344,8 +799,29 @@ function handleTaskCreated() {
   loadTasks()
 }
 
-function viewTaskDetail(task) {
-  router.push(`/tasks/${task.task_id}`)
+async function viewTaskDetail(task) {
+  // 先显示基本信息
+  selectedTask.value = task
+  drawerOpen.value = true
+  subtitles.value = []
+  taskDetailLoading.value = true
+  
+  // 然后加载完整的任务详情
+  try {
+    const fullTask = await tasksApi.getTask(task.task_id)
+    // 只在 drawer 仍然打开且是同一个任务时更新
+    if (drawerOpen.value && selectedTask.value?.task_id === task.task_id) {
+      selectedTask.value = fullTask
+      // 如果有字幕文件，自动加载
+      if (fullTask.files?.some(f => f.file_type === 'subtitles')) {
+        loadSubtitles()
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load task details:', err)
+  } finally {
+    taskDetailLoading.value = false
+  }
 }
 
 async function handleRetry(task) {

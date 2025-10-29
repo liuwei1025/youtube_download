@@ -7,7 +7,7 @@
       </Button>
       <div class="flex items-center gap-3">
         <h1 class="text-2xl font-bold">任务详情</h1>
-        <span v-if="isAutoRefreshing" class="text-base animate-spin" title="正在自动刷新...">🔄</span>
+        <RefreshIcon v-if="isAutoRefreshing" :size="20" class="animate-spin text-primary" title="正在自动刷新..." />
       </div>
     </div>
 
@@ -189,7 +189,7 @@
                 class="p-4 bg-muted hover:bg-muted/80 rounded-lg transition-colors"
               >
                 <div class="flex items-start gap-4">
-                  <div class="text-3xl">{{ getFileIcon(file.file_type) }}</div>
+                  <component :is="getFileIconComponent(file.file_type)" :size="28" class="text-primary" />
                   <div class="flex-1 min-w-0">
                     <div class="flex flex-wrap items-center gap-2 mb-1">
                       <span class="font-medium text-sm truncate">{{ file.file_name }}</span>
@@ -306,7 +306,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Button, Badge, Card, CardHeader, CardTitle, CardContent, CardFooter, Progress } from '@components/ui'
+import { Button, Badge, Card, CardHeader, CardTitle, CardContent, CardFooter, Progress, VideoIcon, AudioIcon, SubtitleIcon, DownloadIcon, RefreshIcon } from '@components/ui'
 import { LoadingSpinner } from '@shared/ui'
 import { formatDateTime, formatFileSize, formatTaskStatus, formatFileType } from '@shared/lib'
 import { TaskActions } from '@features/task-management'
@@ -359,14 +359,14 @@ function getDownloadUrl(taskId, fileType) {
   return tasksApi.getFileDownloadUrl(taskId, fileType)
 }
 
-function getFileIcon(fileType) {
-  const icons = {
-    video: '🎬',
-    video_with_subs: '🎥',
-    audio: '🎵',
-    subtitles: '📝'
+function getFileIconComponent(fileType) {
+  const iconMap = {
+    video: VideoIcon,
+    video_with_subs: VideoIcon,
+    audio: AudioIcon,
+    subtitles: SubtitleIcon
   }
-  return icons[fileType] || '📄'
+  return iconMap[fileType] || VideoIcon
 }
 
 function getFileStatusVariant(status) {

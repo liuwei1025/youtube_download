@@ -2,8 +2,9 @@
   <div class="max-w-2xl">
     <div class="flex justify-between items-center mb-6">
       <h2 class="text-xl font-semibold">创建下载任务</h2>
-      <Button variant="outline" size="sm" @click="fillExample">
-        📝 填充示例
+      <Button variant="outline" size="sm" @click="fillExample" class="flex items-center gap-2">
+        <FileIcon :size="16" />
+        填充示例
       </Button>
     </div>
     
@@ -106,7 +107,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { Button, Input, Checkbox } from '@components/ui'
+import { Button, Input, Checkbox, FileIcon } from '@components/ui'
 import { useTaskStore } from '@entities/task'
 
 const props = defineProps({
