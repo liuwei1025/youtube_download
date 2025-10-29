@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional, Dict, List
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class TaskStatus(str, Enum):
@@ -41,6 +41,32 @@ class DownloadRequest(BaseModel):
     video_quality: str = Field("bestvideo[height<=480]+bestaudio/best[height<=480]", description="视频质量")
     audio_quality: str = Field("192K", description="音频质量")
     max_retries: int = Field(3, description="最大重试次数")
+    
+    @field_validator('url')
+    @classmethod
+    def validate_url(cls, v):
+        """验证 URL 不能为空"""
+        if not v or not v.strip():
+            raise ValueError('URL 不能为空')
+        if 'youtube.com/watch' not in v and 'youtu.be/' not in v:
+            raise ValueError('请提供有效的 YouTube URL')
+        return v.strip()
+    
+    @field_validator('start_time', 'end_time')
+    @classmethod
+    def validate_time(cls, v, info):
+        """验证时间不能为空"""
+        if not v or not v.strip():
+            raise ValueError(f'{info.field_name} 不能为空')
+        return v.strip()
+    
+    @field_validator('proxy')
+    @classmethod
+    def validate_proxy(cls, v):
+        """验证代理地址"""
+        if v and v.strip():
+            return v.strip()
+        return None
 
 
 class TaskResponse(BaseModel):

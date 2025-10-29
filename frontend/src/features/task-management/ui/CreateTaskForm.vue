@@ -142,9 +142,30 @@ async function handleSubmit() {
   error.value = null
 
   try {
+    // 前端验证
+    if (!formData.value.url || !formData.value.url.trim()) {
+      throw new Error('请输入 YouTube URL')
+    }
+    
+    if (!formData.value.start_time || !formData.value.start_time.trim()) {
+      throw new Error('请输入开始时间')
+    }
+    
+    if (!formData.value.end_time || !formData.value.end_time.trim()) {
+      throw new Error('请输入结束时间')
+    }
+    
+    // URL 格式验证
+    if (!formData.value.url.includes('youtube.com/watch') && !formData.value.url.includes('youtu.be/')) {
+      throw new Error('请输入有效的 YouTube URL')
+    }
+
     const taskData = {
       ...formData.value,
-      proxy: formData.value.proxy || null
+      url: formData.value.url.trim(),
+      start_time: formData.value.start_time.trim(),
+      end_time: formData.value.end_time.trim(),
+      proxy: formData.value.proxy ? formData.value.proxy.trim() : null
     }
     
     const result = await taskStore.createTask(taskData)
