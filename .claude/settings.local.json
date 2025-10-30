@@ -9,7 +9,9 @@
       "Bash(timeout:*)",
       "Bash(./get_video_audio_simple.sh:*)",
       "Bash(unset:*)",
-      "Bash(./get_360p_segment.sh:*)"
+      "Bash(./get_360p_segment.sh:*)",
+      "Bash(./build_frontend.sh)",
+      "Bash(docker-compose build:*)"
     ],
     "deny": [],
     "ask": []

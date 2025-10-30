@@ -55,6 +55,27 @@ export const tasksApi = {
   },
 
   /**
+   * 获取完整字幕内容
+   */
+  async getFullSubtitleContent(taskId, subtitleFileName) {
+    // 从截取的字幕文件名中提取语言代码
+    // 例如: subtitles_00_00-00_30.en.vtt -> en
+    const match = subtitleFileName.match(/\.([a-z]{2,3})\.vtt$/i)
+    const lang = match ? match[1] : 'en'
+
+    // 构造完整字幕文件名
+    const fullSubtitleFileName = `subtitles_full.${lang}.vtt`
+
+    // 直接通过构造的URL获取完整字幕
+    // 注意：这需要后端支持通过文件名访问，或者我们使用特殊的file_type
+    const response = await fetch(`/api/tasks/${taskId}/files/subtitles_full/${lang}`)
+    if (!response.ok) {
+      throw new Error('获取完整字幕失败')
+    }
+    return await response.text()
+  },
+
+  /**
    * 取消任务
    */
   cancelTask(taskId) {

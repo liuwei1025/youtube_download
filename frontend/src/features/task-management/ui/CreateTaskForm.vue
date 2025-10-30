@@ -130,8 +130,8 @@ const formData = ref({
   download_video: true,
   download_audio: true,
   download_subtitles: true,
-  burn_subtitles: false,
-  subtitle_langs: 'zh,en',
+  burn_subtitles: true,
+  subtitle_langs: 'it',
   proxy: ''
 })
 

@@ -548,32 +548,32 @@ async def get_task_files(task_id: str):
 async def download_file(task_id: str, file_type: str):
     """
     下载任务生成的文件
-    
+
     - **file_type**: video, audio, subtitles, video_with_subs
     """
     try:
         task = await TaskService.get_task(task_id)
         if not task:
             raise HTTPException(status_code=404, detail="任务不存在")
-        
+
         if task.status != TaskStatus.COMPLETED:
             raise HTTPException(status_code=400, detail="任务未完成")
-        
+
         # 查找对应类型的文件
         target_file = None
         for f in task.files:
             if f.file_type == file_type:
                 target_file = f
                 break
-        
+
         if not target_file:
             raise HTTPException(status_code=404, detail=f"文件类型 {file_type} 不存在")
-        
+
         file_path = target_file.file_path
-        
+
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="文件不存在")
-        
+
         return FileResponse(
             path=file_path,
             filename=target_file.file_name,
@@ -584,6 +584,41 @@ async def download_file(task_id: str, file_type: str):
     except Exception as e:
         logger.error(f"下载文件失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"下载文件失败: {str(e)}")
+
+
+@app.get("/api/tasks/{task_id}/files/subtitles_full/{lang}")
+async def download_full_subtitle(task_id: str, lang: str):
+    """
+    下载完整字幕文件
+
+    - **lang**: 字幕语言代码，如 en, zh 等
+    """
+    try:
+        task = await TaskService.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="任务不存在")
+
+        if not task.video_id:
+            raise HTTPException(status_code=404, detail="视频ID不存在")
+
+        # 构造完整字幕文件路径
+        video_dir = os.path.join(DOWNLOADS_DIR, task.video_id)
+        subtitle_filename = f"subtitles_full.{lang}.vtt"
+        file_path = os.path.join(video_dir, subtitle_filename)
+
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail=f"完整字幕文件不存在: {subtitle_filename}")
+
+        return FileResponse(
+            path=file_path,
+            filename=subtitle_filename,
+            media_type='text/vtt'
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"下载完整字幕失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"下载完整字幕失败: {str(e)}")
 
 
 @app.delete("/api/tasks/{task_id}")
